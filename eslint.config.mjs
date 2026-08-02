@@ -9,7 +9,8 @@ const config = [
   ...compat.extends("next/core-web-vitals"),
   {
     ignores: ["**/.next/**", "**/node_modules/**", "**/coverage/**"],
-    settings: { next: { rootDir: "apps/web/" } },
+    // Vercel runs Next from apps/web; local repository commands run from the root.
+    settings: { next: { rootDir: ["apps/web/", "./"] } },
   },
 ];
 
