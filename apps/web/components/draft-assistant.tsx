@@ -1,4 +1,75 @@
 "use client";
 import { useState } from "react";
-type League = { externalLeagueId: string; name: string; draftId?: string; };
-export function DraftAssistant() { const [username, setUsername] = useState(""); const [leagues, setLeagues] = useState<League[]>([]); const [session, setSession] = useState<{ id: string; teams: { name: string; slot: number }[] } | null>(null); const [message, setMessage] = useState(""); const findLeagues = async () => { setMessage("Looking up your Sleeper leagues…"); const response = await fetch(`/api/v1/integrations/sleeper/leagues?username=${encodeURIComponent(username)}`); const payload = await response.json(); if (!response.ok) return setMessage(payload.error.message); setLeagues(payload.data); setMessage(payload.data.length ? "Choose a league to create its draft room." : "No NFL leagues found for that username."); }; const importLeague = async (league: League) => { if (!league.draftId) return setMessage("Sleeper has not created a draft for this league yet."); setMessage("Creating your draft room…"); const response = await fetch("/api/v1/draft-sessions/imports/sleeper", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ leagueId: league.externalLeagueId, draftId: league.draftId }) }); const payload = await response.json(); if (!response.ok) return setMessage(payload.error.message); setSession(payload.data); setMessage("Draft room created. Recommendations will appear when your projection dataset is available."); }; return <section className="assistant"><label>Sleeper username<input value={username} onChange={(event) => setUsername(event.target.value)} placeholder="your-sleeper-name" /></label><button onClick={findLeagues} disabled={!username}>Find leagues</button><p aria-live="polite">{message}</p>{leagues.map((league) => <button className="league" key={league.externalLeagueId} onClick={() => importLeague(league)}>{league.name}</button>)}{session && <div><h2>{session.id}</h2><p>{session.teams.length} teams synced. Use this room ID to resume the live board.</p></div>}</section>; }
+type League = { externalLeagueId: string; name: string; draftId?: string };
+export function DraftAssistant() {
+  const [username, setUsername] = useState("");
+  const [leagues, setLeagues] = useState<League[]>([]);
+  const [session, setSession] = useState<{
+    id: string;
+    teams: { name: string; slot: number }[];
+  } | null>(null);
+  const [message, setMessage] = useState("");
+  const findLeagues = async () => {
+    setMessage("Looking up your Sleeper leagues…");
+    const response = await fetch(
+      `/api/v1/integrations/sleeper/leagues?username=${encodeURIComponent(username)}`,
+    );
+    const payload = await response.json();
+    if (!response.ok) return setMessage(payload.error.message);
+    setLeagues(payload.data);
+    setMessage(
+      payload.data.length
+        ? "Choose a league to create its draft room."
+        : "No NFL leagues found for that username.",
+    );
+  };
+  const importLeague = async (league: League) => {
+    if (!league.draftId) return setMessage("Sleeper has not created a draft for this league yet.");
+    setMessage("Creating your draft room…");
+    const response = await fetch("/api/v1/draft-sessions/imports/sleeper", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        leagueId: league.externalLeagueId,
+        draftId: league.draftId,
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok) return setMessage(payload.error.message);
+    setSession(payload.data);
+    setMessage(
+      "Draft room created. Recommendations will appear when your projection dataset is available.",
+    );
+  };
+  return (
+    <section className="assistant">
+      <label>
+        Sleeper username
+        <input
+          value={username}
+          onChange={(event) => setUsername(event.target.value)}
+          placeholder="your-sleeper-name"
+        />
+      </label>
+      <button onClick={findLeagues} disabled={!username}>
+        Find leagues
+      </button>
+      <p aria-live="polite">{message}</p>
+      {leagues.map((league) => (
+        <button
+          className="league"
+          key={league.externalLeagueId}
+          onClick={() => importLeague(league)}
+        >
+          {league.name}
+        </button>
+      ))}
+      {session && (
+        <div>
+          <h2>{session.id}</h2>
+          <p>{session.teams.length} teams synced. Use this room ID to resume the live board.</p>
+        </div>
+      )}
+    </section>
+  );
+}

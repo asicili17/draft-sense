@@ -1,2 +1,69 @@
-:root { color-scheme: dark; font-family: Arial, sans-serif; background: #09101f; color: #edf3ff; } * { box-sizing: border-box; } body { margin: 0; } main { max-width: 42rem; margin: 0 auto; padding: 5rem 1.5rem; } h1 { font-size: clamp(2.5rem, 8vw, 4.5rem); line-height: 1; } p { color: #bfccdf; font-size: 1.1rem; } .eyebrow { color: #71e2b8; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
-main { max-width: 720px; margin: 4rem auto; padding: 0 1rem; } .assistant { display: grid; gap: .8rem; margin-top: 2rem; } label { display: grid; gap: .35rem; font-weight: 600; } input, button { font: inherit; padding: .7rem .85rem; border-radius: .45rem; } input { border: 1px solid #94a3b8; } button { cursor: pointer; border: 0; background: #1d4ed8; color: white; text-align: left; } button:disabled { opacity: .5; cursor: not-allowed; } button.league { background: #0f172a; }
+:root {
+  color-scheme: dark;
+  font-family: Arial, sans-serif;
+  background: #09101f;
+  color: #edf3ff;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+main {
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: 5rem 1.5rem;
+}
+h1 {
+  font-size: clamp(2.5rem, 8vw, 4.5rem);
+  line-height: 1;
+}
+p {
+  color: #bfccdf;
+  font-size: 1.1rem;
+}
+.eyebrow {
+  color: #71e2b8;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+main {
+  max-width: 720px;
+  margin: 4rem auto;
+  padding: 0 1rem;
+}
+.assistant {
+  display: grid;
+  gap: 0.8rem;
+  margin-top: 2rem;
+}
+label {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 600;
+}
+input,
+button {
+  font: inherit;
+  padding: 0.7rem 0.85rem;
+  border-radius: 0.45rem;
+}
+input {
+  border: 1px solid #94a3b8;
+}
+button {
+  cursor: pointer;
+  border: 0;
+  background: #1d4ed8;
+  color: white;
+  text-align: left;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+button.league {
+  background: #0f172a;
+}

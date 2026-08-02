@@ -3,4 +3,57 @@ import { ALGORITHM_VERSION, recommend } from "@draft-sense/recommendation";
 import { NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { apiError } from "../../../../../../server/http";
-export async function GET(_: Request, context: { params: Promise<{ id: string }> }) { try { const id = (await context.params).id; const session = await getDraftSession(id); if (!session) return NextResponse.json({ error: { code: "NOT_FOUND", message: "Draft session not found." } }, { status: 404 }); const rosterPositions = ((session.settings as { rosterPositions?: string[] }).rosterPositions ?? []); const players = await draftablePlayers(id); const results = recommend({ players: players.map((item) => ({ id: item.playerId, name: item.player.fullName, position: item.player.positions[0] ?? "WR", projectedPoints: item.projectedPoints, adp: item.adp ?? undefined })), draftedPlayerIds: session.picks.map((pick) => pick.playerId), rosterPositions, roster: [] }); const resultJson = JSON.parse(JSON.stringify(results)) as Prisma.InputJsonValue; const snapshot = await prisma.recommendationSnapshot.upsert({ where: { sessionId_sessionVersion_algorithmVersion: { sessionId: id, sessionVersion: session.version, algorithmVersion: ALGORITHM_VERSION } }, update: { result: resultJson }, create: { sessionId: id, sessionVersion: session.version, algorithmVersion: ALGORITHM_VERSION, input: { rosterPositions, datasetId: session.datasetId }, result: resultJson } }); return NextResponse.json({ data: { sessionVersion: session.version, algorithmVersion: ALGORITHM_VERSION, recommendations: results, snapshotId: snapshot.id } }); } catch (error) { return apiError(error); } }
+export async function GET(_: Request, context: { params: Promise<{ id: string }> }) {
+  try {
+    const id = (await context.params).id;
+    const session = await getDraftSession(id);
+    if (!session)
+      return NextResponse.json(
+        { error: { code: "NOT_FOUND", message: "Draft session not found." } },
+        { status: 404 },
+      );
+    const rosterPositions =
+      (session.settings as { rosterPositions?: string[] }).rosterPositions ?? [];
+    const players = await draftablePlayers(id);
+    const results = recommend({
+      players: players.map((item) => ({
+        id: item.playerId,
+        name: item.player.fullName,
+        position: item.player.positions[0] ?? "WR",
+        projectedPoints: item.projectedPoints,
+        adp: item.adp ?? undefined,
+      })),
+      draftedPlayerIds: session.picks.map((pick) => pick.playerId),
+      rosterPositions,
+      roster: [],
+    });
+    const resultJson = JSON.parse(JSON.stringify(results)) as Prisma.InputJsonValue;
+    const snapshot = await prisma.recommendationSnapshot.upsert({
+      where: {
+        sessionId_sessionVersion_algorithmVersion: {
+          sessionId: id,
+          sessionVersion: session.version,
+          algorithmVersion: ALGORITHM_VERSION,
+        },
+      },
+      update: { result: resultJson },
+      create: {
+        sessionId: id,
+        sessionVersion: session.version,
+        algorithmVersion: ALGORITHM_VERSION,
+        input: { rosterPositions, datasetId: session.datasetId },
+        result: resultJson,
+      },
+    });
+    return NextResponse.json({
+      data: {
+        sessionVersion: session.version,
+        algorithmVersion: ALGORITHM_VERSION,
+        recommendations: results,
+        snapshotId: snapshot.id,
+      },
+    });
+  } catch (error) {
+    return apiError(error);
+  }
+}

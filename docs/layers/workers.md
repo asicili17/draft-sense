@@ -17,4 +17,3 @@ Provider data is staged, validated, normalized to canonical players, and publish
 ## Operations
 
 Workers are horizontally scalable and have bounded concurrency, timeouts, retries with backoff, and dead-letter handling. Track queue depth, job duration, retry count, simulation throughput, and dataset freshness. Jobs are idempotent and must tolerate redelivery and process restarts.
-

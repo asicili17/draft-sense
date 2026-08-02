@@ -34,4 +34,3 @@ Confidence is not a probability of player success. It expresses ranking stabilit
 ## Evaluation and safeguards
 
 Backtest against historical draft positions, compare recommendation utility with ADP and expert baselines, and track latency and recommendation churn. Preserve algorithm/configuration versions. Validate all rules server-side and return a safe fallback ranking when simulation data is unavailable.
-

@@ -6,11 +6,11 @@ DraftSense must not depend on Sleeper, MySportsFeeds, Fantasy Football Calculato
 
 ## Initial provider responsibilities
 
-| DraftSense need | Initial adapter | Replaceable by |
-| --- | --- | --- |
-| League import, scoring, roster and draft state | `SleeperLeagueProvider` | A future Yahoo or other platform provider |
-| NFL player metadata and projected stat lines | `MySportsFeedsProjectionProvider` | Any licensed projection provider |
-| ADP by scoring format and league size | `FantasyFootballCalculatorAdpProvider` | Any permitted ADP provider |
+| DraftSense need                                | Initial adapter                        | Replaceable by                            |
+| ---------------------------------------------- | -------------------------------------- | ----------------------------------------- |
+| League import, scoring, roster and draft state | `SleeperLeagueProvider`                | A future Yahoo or other platform provider |
+| NFL player metadata and projected stat lines   | `MySportsFeedsProjectionProvider`      | Any licensed projection provider          |
+| ADP by scoring format and league size          | `FantasyFootballCalculatorAdpProvider` | Any permitted ADP provider                |
 
 The source of an individual fact is explicit. A projection adapter must not silently provide ADP, and an ADP adapter must not silently provide projections.
 
@@ -40,7 +40,7 @@ interface AdpProvider {
 
 - Maintain DraftSense `Player` as the canonical identity. Store every provider's player ID in a dedicated external-identity mapping, never in recommendation logic.
 - Match a new provider identity first by its known external IDs, then by a reviewed name/team/position match. Ambiguous matches are quarantined for review rather than guessed.
-- Preserve projected *stat lines* and calculate fantasy points with the imported Sleeper scoring rules. This makes the same source work for PPR, half-PPR, superflex, and custom leagues.
+- Preserve projected _stat lines_ and calculate fantasy points with the imported Sleeper scoring rules. This makes the same source work for PPR, half-PPR, superflex, and custom leagues.
 - Store provider-specific fields only under typed adapter metadata. Do not add MySportsFeeds or Sleeper fields to generic domain entities.
 - Persist every successful ADP and projection import as an immutable dataset version. A draft session pins exact versions.
 

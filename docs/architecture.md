@@ -61,14 +61,13 @@ All league-platform, projection, and ADP integrations sit behind application-own
 
 ## Technology choices
 
-| Choice | Rationale |
-| --- | --- |
-| Next.js + TypeScript | One typed full-stack application, React UI, route handlers, and server rendering. |
-| Vercel | Managed deployment, secure server routes, previews, and scheduled refreshes without operating servers. |
-| PostgreSQL + Prisma | Relational integrity for draft state, migrations, and a type-safe data layer. |
-| Redis | Low-latency cache, pub/sub or streams, queues, presence, and rate limiting. |
-| Tailwind + shadcn/ui | Accessible, composable interface primitives with project-owned styling. |
-| OpenAI Responses API | Structured explanation generation and tool calls without making it a decision authority. |
+| Choice               | Rationale                                                                                              |
+| -------------------- | ------------------------------------------------------------------------------------------------------ |
+| Next.js + TypeScript | One typed full-stack application, React UI, route handlers, and server rendering.                      |
+| Vercel               | Managed deployment, secure server routes, previews, and scheduled refreshes without operating servers. |
+| PostgreSQL + Prisma  | Relational integrity for draft state, migrations, and a type-safe data layer.                          |
+| Redis                | Low-latency cache, pub/sub or streams, queues, presence, and rate limiting.                            |
+| Tailwind + shadcn/ui | Accessible, composable interface primitives with project-owned styling.                                |
+| OpenAI Responses API | Structured explanation generation and tool calls without making it a decision authority.               |
 
 Use a modular monolith initially: packages/modules have explicit interfaces, but deploy together. Extract workers or sport-specific services only when load, ownership, or independent release cadence requires it.
-

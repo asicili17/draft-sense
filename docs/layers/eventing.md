@@ -17,4 +17,3 @@ The gateway authorizes subscriptions by session membership, maps internal events
 ## Operational requirements
 
 Monitor outbox lag, consumer lag, dead letters, broadcast failures, connection counts, and reconnect rate. Bound payload size and channel fan-out. Never publish sensitive fields merely because they exist in an internal event.
-

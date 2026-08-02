@@ -49,4 +49,3 @@
 ## Future enhancements
 
 Add model calibration from outcomes only after preserving historical inputs and recommendation decisions. Support salary caps, trades, IDP, best ball, and multi-league portfolio optimization through extensions rather than changing core draft event semantics.
-

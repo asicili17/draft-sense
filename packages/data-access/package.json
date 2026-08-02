@@ -1,6 +1,21 @@
 {
-  "name": "@draft-sense/data-access", "private": true, "exports": { ".": "./src/index.ts" },
-  "scripts": { "prisma:validate": "prisma validate --schema prisma/schema.prisma", "db:generate": "prisma generate --schema prisma/schema.prisma", "db:push": "prisma db push --schema prisma/schema.prisma", "typecheck": "tsc --noEmit" },
-  "dependencies": { "@draft-sense/providers": "*", "@prisma/client": "^6.8.2" },
-  "devDependencies": { "prisma": "^6.8.2", "typescript": "^5.8.3" }
+  "name": "@draft-sense/data-access",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "prisma:validate": "prisma validate --schema prisma/schema.prisma",
+    "db:generate": "prisma generate --schema prisma/schema.prisma",
+    "db:push": "prisma db push --schema prisma/schema.prisma",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@draft-sense/providers": "*",
+    "@prisma/client": "^6.8.2"
+  },
+  "devDependencies": {
+    "prisma": "^6.8.2",
+    "typescript": "^5.8.3"
+  }
 }

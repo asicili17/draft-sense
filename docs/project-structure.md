@@ -39,4 +39,3 @@ Use an explicit composition root in server startup that constructs repositories,
 Use TypeScript strict mode; validate all transport and provider input at boundaries with a shared schema library; prefer immutable values and exhaustive enum handling. Keep functions focused, errors typed and stable, and logs structured without personal or secret data. Format and lint through repository scripts once established.
 
 Test the recommendation and draft engines with deterministic unit tests, property tests for roster/pick invariants, repository integration tests against Postgres, API contract tests, WebSocket integration tests, and end-to-end draft flows. Use fixed seeds and versioned fixtures for simulations. Test OpenAI adapters with recorded schema-conformant responses; never require live model calls in CI.
-

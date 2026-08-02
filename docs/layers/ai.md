@@ -17,4 +17,3 @@ Optional model tools are read-only, authorized server functions returning bounde
 ## Operations and safety
 
 Cache by snapshot ID and prompt version; rate-limit per user/session; record redacted telemetry for quality and cost. Enforce output limits and treat all model output as untrusted display text. Model/provider outages degrade only explanations, never draft recommendations or pick recording.
-

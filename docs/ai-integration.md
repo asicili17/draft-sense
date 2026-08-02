@@ -19,4 +19,3 @@ If interactive explanation needs additional context, expose read-only tools owne
 Later, ingest licensed player news and trusted analysis into a versioned document store with source, publication date, sport/player tags, and embedding. Retrieve only relevant, recent, authorized documents, include source attribution and timestamps in the explanation context, and treat retrieval as supplemental context—not a replacement for projections. Enforce freshness windows, source allowlists, injection-resistant document handling, and a fallback that omits unverifiable news.
 
 Apply request rate limits, data minimization, output moderation appropriate to the product, retries with backoff, response caching by snapshot/prompt version, and a deterministic template fallback when OpenAI is unavailable.
-
