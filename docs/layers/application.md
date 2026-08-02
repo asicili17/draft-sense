@@ -12,7 +12,7 @@ Commands that mutate a draft carry its expected version and idempotency key. The
 
 ## Ports
 
-Define interfaces here or in the consuming domain package for repositories, transaction manager, clock, ID generator, event dispatcher, simulation dispatcher, cache, and explanation provider. Composition roots select Prisma, Redis, OpenAI, and queue implementations. No service imports a concrete provider SDK.
+Define interfaces here or in the consuming domain package for repositories, transaction manager, clock, ID generator, event dispatcher, simulation dispatcher, cache, explanation provider, league-platform provider, projection provider, and ADP provider. Composition roots select Prisma, Redis, OpenAI, queues, and concrete external-data adapters. No service imports a concrete provider SDK. See [Provider Adapter Architecture](../provider-adapters.md).
 
 ## Constraints
 

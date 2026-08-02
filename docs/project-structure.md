@@ -14,6 +14,7 @@ packages/
   draft-engine/        ordering, validation, roster construction
   recommendation/      scoring pipeline and factor contracts
   simulation/          trial runner and opponent strategies
+  providers/           provider ports, adapters, normalizers, and fixtures
   data-access/         Prisma repositories and migrations
   events/              outbox, stream, WebSocket contracts
   ai/                  explanation service and schemas
@@ -31,7 +32,7 @@ Application services orchestrate repositories, engines, events, and external cli
 
 ## Dependency injection
 
-Use an explicit composition root in server startup that constructs repositories, clock/ID providers, event publisher, simulation dispatcher, and AI client. Pass dependencies through constructors or factory functions. Tests provide in-memory/fake implementations; avoid global mutable singletons. Scoped request context carries request ID and authenticated actor, not business state.
+Use an explicit composition root in server startup that constructs repositories, clock/ID providers, event publisher, simulation dispatcher, AI client, and external-data adapters. Pass dependencies through constructors or factory functions. Tests provide in-memory/fake implementations; avoid global mutable singletons. Scoped request context carries request ID and authenticated actor, not business state.
 
 ## Coding standards and testing
 

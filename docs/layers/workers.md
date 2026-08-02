@@ -2,7 +2,7 @@
 
 ## Responsibility
 
-Workers handle work unsuitable for the request path: Monte Carlo simulation, projection ingestion/normalization, recommendation recomputation, cache warming, and optional RAG indexing. They consume versioned events and invoke the same application/domain interfaces as synchronous requests.
+Workers and scheduled jobs handle work unsuitable for the request path: Sleeper draft polling, projection/ADP ingestion and normalization, Monte Carlo simulation, recommendation recomputation, cache warming, and optional RAG indexing. They consume versioned events and invoke the same application/domain interfaces as synchronous requests.
 
 ## Simulation workers
 
@@ -12,7 +12,7 @@ Jobs include deduplication keys derived from session version, algorithm version,
 
 ## Ingestion workers
 
-Provider data is staged, validated, normalized to canonical players, and published as an immutable projection dataset only after completeness checks pass. Failed imports retain diagnostics and do not change active datasets. Provider credentials remain in worker/server configuration and never appear in events.
+Provider data is staged, validated, normalized to canonical players, and published as an immutable projection dataset only after completeness checks pass. Failed imports retain diagnostics and do not change active datasets. Provider credentials remain in worker/server configuration and never appear in events. Initial jobs use Sleeper for draft snapshots, MySportsFeeds for projected stat lines, and Fantasy Football Calculator for daily ADP.
 
 ## Operations
 

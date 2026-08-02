@@ -13,7 +13,7 @@ Browser (Next.js, Tailwind, shadcn/ui)
   └─ WebSocket client
              │ HTTPS / WebSocket
              ▼
-Next.js application
+Next.js application on Vercel
   ├─ REST route handlers / authentication
   ├─ Draft session service
   ├─ Recommendation orchestration service
@@ -21,8 +21,8 @@ Next.js application
   └─ WebSocket gateway
        │              │                 │
        ▼              ▼                 ▼
- PostgreSQL        Redis            Worker processes
- source of truth   cache, queues    simulations, projections import
+ PostgreSQL        Redis            Managed jobs / workers
+ source of truth   cache, queues    simulations, provider imports
        │                                  │
        └────────── Recommendation engine ─┘
                               │
@@ -36,6 +36,8 @@ Next.js application
 The frontend renders authoritative server state, collects draft actions, and displays recommendation changes. It must not calculate rankings, scarcity, or availability. Optimistic UI is limited to a pending pick indicator; the server-confirmed event is authoritative.
 
 The backend validates draft order and roster rules, persists immutable draft events, computes recommendations, runs simulations, and publishes updates. Domain services are independent of HTTP and WebSocket transport. Workers perform CPU-intensive simulation and ingestion work outside the request lifecycle.
+
+The initial deployment is a Next.js application on Vercel. Scheduled jobs refresh external datasets and Sleeper draft snapshots; provider keys remain server-side. Use managed Postgres and Redis services, and move heavy simulation work to a separate managed worker only when serverless execution limits make that necessary.
 
 ## Event-driven draft flow
 
@@ -53,11 +55,16 @@ Postgres is the system of record for users, leagues, configurations, players, pr
 
 Projection imports create immutable dataset versions. A session pins a dataset version, preserving reproducibility even as new projections arrive. Every recommendation persists its input versions, algorithm version, and score breakdown for auditability.
 
+## External provider boundary
+
+All league-platform, projection, and ADP integrations sit behind application-owned ports. Concrete provider adapters normalize external responses into DraftSense contracts before persistence; neither the UI nor the draft/recommendation engines may import a provider SDK or rely on a provider identifier. This keeps a future provider swap localized. See [Provider Adapter Architecture](provider-adapters.md).
+
 ## Technology choices
 
 | Choice | Rationale |
 | --- | --- |
 | Next.js + TypeScript | One typed full-stack application, React UI, route handlers, and server rendering. |
+| Vercel | Managed deployment, secure server routes, previews, and scheduled refreshes without operating servers. |
 | PostgreSQL + Prisma | Relational integrity for draft state, migrations, and a type-safe data layer. |
 | Redis | Low-latency cache, pub/sub or streams, queues, presence, and rate limiting. |
 | Tailwind + shadcn/ui | Accessible, composable interface primitives with project-owned styling. |

@@ -8,6 +8,8 @@ All REST endpoints are versioned under `/api/v1`, use JSON, require authenticate
 | --- | --- | --- |
 | `GET` | `/players` | Filter players by sport, position, dataset, and availability. |
 | `GET` | `/projection-datasets` | List available versioned datasets. |
+| `GET` | `/integrations/sleeper/leagues` | Find a Sleeper user's NFL leagues by username and season. |
+| `POST` | `/draft-sessions/imports/sleeper` | Create or refresh a session from a selected Sleeper league. |
 | `POST` | `/draft-sessions` | Create a configured session. |
 | `GET` | `/draft-sessions/{id}` | Read session, teams, picks, and current version. |
 | `PATCH` | `/draft-sessions/{id}` | Update allowed pre-draft settings. |
@@ -16,6 +18,8 @@ All REST endpoints are versioned under `/api/v1`, use JSON, require authenticate
 | `GET` | `/draft-sessions/{id}/recommendations` | Read the latest deterministic result. |
 | `POST` | `/draft-sessions/{id}/recommendations/explanation` | Request an explanation for a specified snapshot/player. |
 | `POST` | `/draft-sessions/{id}/simulations` | Start or retrieve a keyed simulation run. |
+
+Sleeper import endpoints expose only normalized DraftSense fields. Provider response bodies, credentials, and provider-specific errors are never returned to clients. A session created from a Sleeper league records the source link and pins the current projection/ADP versions.
 
 ### Record a pick
 
