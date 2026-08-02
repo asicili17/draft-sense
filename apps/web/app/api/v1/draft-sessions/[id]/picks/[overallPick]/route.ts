@@ -28,11 +28,13 @@ export async function DELETE(
       {
         teamCount: session.teamCount,
         version: session.version,
-        picks: session.picks.map((pick) => ({
-          overallPick: pick.overallPick,
-          teamSlot: pick.team.slot,
-          playerId: pick.playerId,
-        })),
+        picks: session.picks.map(
+          (pick: { overallPick: number; playerId: string; team: { slot: number } }) => ({
+            overallPick: pick.overallPick,
+            teamSlot: pick.team.slot,
+            playerId: pick.playerId,
+          }),
+        ),
       },
       body.expectedVersion,
     );

@@ -22,13 +22,20 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
     const rosterPositions =
       (session.settings as { rosterPositions?: string[] }).rosterPositions ?? [];
     const ranked = recommend({
-      players: players.map((item) => ({
-        id: item.playerId,
-        name: item.player.fullName,
-        position: item.player.positions[0] ?? "WR",
-        projectedPoints: item.projectedPoints,
-        adp: item.adp ?? undefined,
-      })),
+      players: players.map(
+        (item: {
+          playerId: string;
+          projectedPoints: number;
+          adp: number | null;
+          player: { fullName: string; positions: string[] };
+        }) => ({
+          id: item.playerId,
+          name: item.player.fullName,
+          position: item.player.positions[0] ?? "WR",
+          projectedPoints: item.projectedPoints,
+          adp: item.adp ?? undefined,
+        }),
+      ),
       draftedPlayerIds: [],
       rosterPositions,
       roster: [],
@@ -37,10 +44,13 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
       session.teamCount - (session.picks.length % session.teamCount || session.teamCount);
     const seed = `${id}:${session.version}:${trials}`;
     const summary = runSimulation({
-      candidates: ranked.map((item) => ({
+      candidates: ranked.map((item: { playerId: string; score: number }) => ({
         playerId: item.playerId,
         score: item.score,
-        adp: players.find((player) => player.playerId === item.playerId)?.adp ?? undefined,
+        adp:
+          players.find(
+            (player: { playerId: string; adp: number | null }) => player.playerId === item.playerId,
+          )?.adp ?? undefined,
       })),
       picksUntilNextTurn,
       trials,

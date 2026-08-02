@@ -16,14 +16,21 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
       (session.settings as { rosterPositions?: string[] }).rosterPositions ?? [];
     const players = await draftablePlayers(id);
     const results = recommend({
-      players: players.map((item) => ({
-        id: item.playerId,
-        name: item.player.fullName,
-        position: item.player.positions[0] ?? "WR",
-        projectedPoints: item.projectedPoints,
-        adp: item.adp ?? undefined,
-      })),
-      draftedPlayerIds: session.picks.map((pick) => pick.playerId),
+      players: players.map(
+        (item: {
+          playerId: string;
+          projectedPoints: number;
+          adp: number | null;
+          player: { fullName: string; positions: string[] };
+        }) => ({
+          id: item.playerId,
+          name: item.player.fullName,
+          position: item.player.positions[0] ?? "WR",
+          projectedPoints: item.projectedPoints,
+          adp: item.adp ?? undefined,
+        }),
+      ),
+      draftedPlayerIds: session.picks.map((pick: { playerId: string }) => pick.playerId),
       rosterPositions,
       roster: [],
     });
