@@ -52,14 +52,29 @@ export async function importSleeperLeague(input: { league: LeagueSnapshot; draft
       rules: input.league.scoringRules as Prisma.InputJsonValue,
     },
   });
-  const dataset = await prisma.projectionDataset.findFirst({
+  const latestDataset = await prisma.projectionDataset.findFirst({
     where: { sport: "NFL" },
     orderBy: { publishedAt: "desc" },
   });
-  if (!dataset)
-    throw new Error(
-      "No projection dataset is available yet. Import projections before creating a draft session.",
-    );
+  // A user should be able to connect Sleeper before the paid projection feed is ready.
+  // This placeholder is replaced by a real, pinned dataset on the next session refresh.
+  const dataset =
+    latestDataset ??
+    (await prisma.projectionDataset.upsert({
+      where: {
+        sport_source_version: {
+          sport: "NFL",
+          source: "draftsense-placeholder",
+          version: "waiting-for-projections",
+        },
+      },
+      update: {},
+      create: {
+        sport: "NFL",
+        source: "draftsense-placeholder",
+        version: "waiting-for-projections",
+      },
+    }));
   const teamCount = Math.max(
     input.draft.teams.length,
     ...input.draft.picks.map((pick) => Number(pick.rosterId)),
