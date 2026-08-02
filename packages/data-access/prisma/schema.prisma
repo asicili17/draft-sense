@@ -1,0 +1,176 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Sport {
+  NFL
+}
+enum Position {
+  QB
+  RB
+  WR
+  TE
+  K
+  DST
+  DL
+  LB
+  DB
+}
+enum DraftType {
+  SNAKE
+  AUCTION
+}
+enum DraftStatus {
+  SETUP
+  LIVE
+  COMPLETE
+}
+enum PickSource {
+  SLEEPER
+  MANUAL
+}
+enum ProviderImportStatus {
+  STARTED
+  SUCCEEDED
+  FAILED
+}
+
+model User {
+  id String @id @default(uuid()) @db.Uuid
+  email String @unique
+  displayName String
+  leagues League[] @relation("LeagueOwner")
+  sessions DraftSession[] @relation("SessionOwner")
+}
+model League {
+  id String @id @default(uuid()) @db.Uuid
+  ownerId String @db.Uuid
+  sport Sport
+  name String
+  owner User @relation("LeagueOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  integrations LeagueIntegration[]
+  sessions DraftSession[]
+}
+model LeagueIntegration {
+  id String @id @default(uuid()) @db.Uuid
+  leagueId String @db.Uuid
+  provider String
+  externalLeagueId String
+  externalDraftId String?
+  lastSyncedAt DateTime?
+  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  @@unique([provider, externalLeagueId])
+  @@index([leagueId])
+}
+model ScoringFormat {
+  id String @id @default(uuid()) @db.Uuid
+  sport Sport
+  name String
+  rules Json
+  version Int
+  projections PlayerProjection[]
+  sessions DraftSession[]
+  @@unique([sport, name, version])
+}
+model Player {
+  id String @id @default(uuid()) @db.Uuid
+  sport Sport
+  fullName String
+  team String?
+  positions Position[]
+  identities PlayerExternalIdentity[]
+  projections PlayerProjection[]
+  picks DraftPick[]
+  @@index([sport, fullName])
+}
+model PlayerExternalIdentity {
+  id String @id @default(uuid()) @db.Uuid
+  playerId String @db.Uuid
+  provider String
+  externalId String
+  metadata Json?
+  player Player @relation(fields: [playerId], references: [id], onDelete: Restrict)
+  @@unique([provider, externalId])
+}
+model ProviderImport {
+  id String @id @default(uuid()) @db.Uuid
+  provider String
+  kind String
+  retrievedAt DateTime @default(now())
+  status ProviderImportStatus
+  payloadHash String
+  diagnostics Json?
+  datasets ProjectionDataset[]
+}
+model ProjectionDataset {
+  id String @id @default(uuid()) @db.Uuid
+  importId String? @db.Uuid
+  sport Sport
+  source String
+  version String
+  publishedAt DateTime @default(now())
+  import ProviderImport? @relation(fields: [importId], references: [id], onDelete: Restrict)
+  projections PlayerProjection[]
+  sessions DraftSession[]
+  @@unique([sport, source, version])
+}
+model PlayerProjection {
+  id String @id @default(uuid()) @db.Uuid
+  datasetId String @db.Uuid
+  playerId String @db.Uuid
+  scoringFormatId String @db.Uuid
+  projectedPoints Float
+  adp Float?
+  metadata Json?
+  dataset ProjectionDataset @relation(fields: [datasetId], references: [id], onDelete: Restrict)
+  player Player @relation(fields: [playerId], references: [id], onDelete: Restrict)
+  scoringFormat ScoringFormat @relation(fields: [scoringFormatId], references: [id], onDelete: Restrict)
+  @@unique([datasetId, playerId, scoringFormatId])
+}
+model DraftSession {
+  id String @id @default(uuid()) @db.Uuid
+  leagueId String? @db.Uuid
+  ownerId String @db.Uuid
+  datasetId String @db.Uuid
+  scoringFormatId String @db.Uuid
+  sport Sport
+  status DraftStatus @default(SETUP)
+  draftType DraftType
+  teamCount Int
+  settings Json
+  version Int @default(0)
+  league League? @relation(fields: [leagueId], references: [id], onDelete: Restrict)
+  owner User @relation("SessionOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  dataset ProjectionDataset @relation(fields: [datasetId], references: [id], onDelete: Restrict)
+  scoringFormat ScoringFormat @relation(fields: [scoringFormatId], references: [id], onDelete: Restrict)
+  teams DraftTeam[]
+  picks DraftPick[]
+}
+model DraftTeam {
+  id String @id @default(uuid()) @db.Uuid
+  sessionId String @db.Uuid
+  slot Int
+  name String
+  session DraftSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  picks DraftPick[]
+  @@unique([sessionId, slot])
+}
+model DraftPick {
+  id String @id @default(uuid()) @db.Uuid
+  sessionId String @db.Uuid
+  overallPick Int
+  round Int
+  teamId String @db.Uuid
+  playerId String @db.Uuid
+  source PickSource
+  session DraftSession @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  team DraftTeam @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  player Player @relation(fields: [playerId], references: [id], onDelete: Restrict)
+  @@unique([sessionId, overallPick])
+  @@unique([sessionId, playerId])
+}
