@@ -144,3 +144,5 @@ vite.config.ts.timestamp-*
 
 # Personal planning notes
 /plans/
+.vercel
+.env*
