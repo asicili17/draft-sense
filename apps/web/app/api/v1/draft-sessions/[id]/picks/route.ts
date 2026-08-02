@@ -1,5 +1,6 @@
 import { getDraftSession, prisma } from "@draft-sense/data-access";
 import { recordPick } from "@draft-sense/draft-engine";
+import type { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { apiError } from "../../../../../../server/http";
@@ -46,7 +47,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
         { error: { code: "TEAM_NOT_FOUND", message: "Draft team not found." } },
         { status: 422 },
       );
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const updated = await tx.draftSession.updateMany({
         where: { id, version: body.expectedVersion },
         data: { version: state.version },

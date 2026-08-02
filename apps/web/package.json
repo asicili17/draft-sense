@@ -13,6 +13,7 @@
     "@draft-sense/providers": "*",
     "@draft-sense/recommendation": "*",
     "@draft-sense/simulation": "*",
+    "@prisma/client": "^6.8.2",
     "next": "^15.3.2",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",

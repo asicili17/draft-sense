@@ -1,7 +1,6 @@
 import { draftablePlayers, getDraftSession, prisma } from "@draft-sense/data-access";
 import { ALGORITHM_VERSION, recommend } from "@draft-sense/recommendation";
 import { NextResponse } from "next/server";
-import type { Prisma } from "@prisma/client";
 import { apiError } from "../../../../../../server/http";
 export async function GET(_: Request, context: { params: Promise<{ id: string }> }) {
   try {
@@ -34,7 +33,7 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
       rosterPositions,
       roster: [],
     });
-    const resultJson = JSON.parse(JSON.stringify(results)) as Prisma.InputJsonValue;
+    const resultJson = JSON.parse(JSON.stringify(results)) as never;
     const snapshot = await prisma.recommendationSnapshot.upsert({
       where: {
         sessionId_sessionVersion_algorithmVersion: {
