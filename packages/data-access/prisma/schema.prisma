@@ -55,6 +55,7 @@ model League {
   owner User @relation("LeagueOwner", fields: [ownerId], references: [id], onDelete: Restrict)
   integrations LeagueIntegration[]
   sessions DraftSession[]
+  @@unique([ownerId, name])
 }
 model LeagueIntegration {
   id String @id @default(uuid()) @db.Uuid
@@ -150,6 +151,9 @@ model DraftSession {
   scoringFormat ScoringFormat @relation(fields: [scoringFormatId], references: [id], onDelete: Restrict)
   teams DraftTeam[]
   picks DraftPick[]
+  recommendations RecommendationSnapshot[]
+  simulations SimulationRun[]
+  outboxEvents OutboxEvent[]
 }
 model DraftTeam {
   id String @id @default(uuid()) @db.Uuid
@@ -173,4 +177,37 @@ model DraftPick {
   player Player @relation(fields: [playerId], references: [id], onDelete: Restrict)
   @@unique([sessionId, overallPick])
   @@unique([sessionId, playerId])
+}
+model RecommendationSnapshot {
+  id String @id @default(uuid()) @db.Uuid
+  sessionId String @db.Uuid
+  sessionVersion Int
+  algorithmVersion String
+  input Json
+  result Json
+  createdAt DateTime @default(now())
+  session DraftSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  @@unique([sessionId, sessionVersion, algorithmVersion])
+  @@index([sessionId, createdAt])
+}
+model SimulationRun {
+  id String @id @default(uuid()) @db.Uuid
+  sessionId String @db.Uuid
+  sessionVersion Int
+  seed String
+  trials Int
+  result Json
+  createdAt DateTime @default(now())
+  session DraftSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  @@unique([sessionId, sessionVersion, seed])
+}
+model OutboxEvent {
+  id String @id @default(uuid()) @db.Uuid
+  sessionId String @db.Uuid
+  type String
+  payload Json
+  createdAt DateTime @default(now())
+  processedAt DateTime?
+  session DraftSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  @@index([processedAt, createdAt])
 }
