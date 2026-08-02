@@ -1,0 +1,16 @@
+{
+  "name": "draft-sense",
+  "private": true,
+  "packageManager": "npm@11.11.1",
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "npm run dev --workspace=@draft-sense/web",
+    "build": "npm run build --workspace=@draft-sense/web",
+    "db:generate": "npm run db:generate --workspace=@draft-sense/data-access",
+    "db:push": "npm run db:push --workspace=@draft-sense/data-access",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "devDependencies": { "typescript": "^5.8.3", "vitest": "^3.1.4" }
+}
