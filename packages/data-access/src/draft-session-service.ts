@@ -1,5 +1,6 @@
 import type { Position, Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
+import { scoreNflProjection } from "./nfl-scoring";
 import type { DraftSnapshot, LeagueSnapshot } from "@draft-sense/providers";
 const DEFAULT_OWNER_EMAIL = "local-user@draftsense.app";
 const positionSet = new Set<Position>(["QB", "RB", "WR", "TE", "K", "DST", "DL", "LB", "DB"]);
@@ -148,10 +149,9 @@ export async function draftablePlayers(sessionId: string) {
     where: { id: sessionId },
     include: { picks: true },
   });
-  return prisma.playerProjection.findMany({
+  const projections = await prisma.playerProjection.findMany({
     where: {
       datasetId: session.datasetId,
-      scoringFormatId: session.scoringFormatId,
       player: {
         sport: "NFL",
         NOT: { id: { in: session.picks.map((pick) => pick.playerId) } },
@@ -161,5 +161,14 @@ export async function draftablePlayers(sessionId: string) {
     take: 250,
     orderBy: { projectedPoints: "desc" },
   });
+  const scoringRules =
+    (session.settings as { scoringRules?: Record<string, number> }).scoringRules ?? {};
+  return projections.map((projection) => ({
+    ...projection,
+    projectedPoints: scoreNflProjection(
+      (projection.metadata as { stats?: Record<string, number> } | null)?.stats ?? {},
+      scoringRules,
+    ),
+  }));
 }
 export { positionSet };
