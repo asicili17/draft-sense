@@ -12,11 +12,15 @@
     "build": "npm run build --workspace=@draft-sense/web",
     "db:generate": "npm run db:generate --workspace=@draft-sense/data-access",
     "db:push": "npm run db:push --workspace=@draft-sense/data-access",
+    "db:migrate:dev": "npm run db:migrate:dev --workspace=@draft-sense/data-access",
+    "db:migrate:deploy": "npm run db:migrate:deploy --workspace=@draft-sense/data-access",
+    "db:test:reset": "npm run db:test:reset --workspace=@draft-sense/data-access",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present"
+    "test": "npm run test --workspaces --if-present",
+    "test:integration": "npm run db:test:reset && npm run test:integration --workspaces --if-present"
   },
   "devDependencies": {
     "prettier": "^3.9.6",
