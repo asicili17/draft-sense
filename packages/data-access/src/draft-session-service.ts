@@ -86,6 +86,7 @@ export async function importSleeperLeague(input: { league: LeagueSnapshot; draft
     scoringRules: input.league.scoringRules,
     source: {
       provider: "sleeper",
+      leagueId: input.league.league.externalLeagueId,
       draftId: input.draft.draftId,
       syncedAt: input.draft.retrievedAt.toISOString(),
     },
@@ -117,17 +118,65 @@ export async function importSleeperLeague(input: { league: LeagueSnapshot; draft
           settings: settings as Prisma.InputJsonValue,
         },
       });
-  await prisma.draftTeam.deleteMany({ where: { sessionId: session.id } });
-  await prisma.draftTeam.createMany({
-    data: Array.from({ length: teamCount }, (_, index) => {
+  await prisma.$transaction(
+    Array.from({ length: teamCount }, (_, index) => {
       const slot = index + 1;
-      return {
-        sessionId: session.id,
-        slot,
-        name: input.draft.teams.find((team) => team.slot === slot)?.name ?? `Team ${slot}`,
-      };
+      const sourceTeam = input.draft.teams.find((team) => team.slot === slot);
+      return prisma.draftTeam.upsert({
+        where: { sessionId_slot: { sessionId: session.id, slot } },
+        update: { name: sourceTeam?.name ?? `Team ${slot}` },
+        create: { sessionId: session.id, slot, name: sourceTeam?.name ?? `Team ${slot}` },
+      });
     }),
+  );
+  // Only canonical identities can become draft picks. Unknown provider players remain visible
+  // upstream and can be corrected manually, rather than creating an invalid local player.
+  const teams = await prisma.draftTeam.findMany({ where: { sessionId: session.id } });
+  const identityRows = await prisma.playerExternalIdentity.findMany({
+    where: {
+      provider: "sleeper",
+      externalId: { in: input.draft.picks.map((pick) => pick.externalPlayerId) },
+    },
   });
+  const playerByExternalId = new Map(identityRows.map((identity) => [identity.externalId, identity.playerId]));
+  const teamByRosterId = new Map(
+    input.draft.teams
+      .filter((team) => team.externalRosterId)
+      .map((team) => [team.externalRosterId as string, teams.find((item) => item.slot === team.slot)?.id]),
+  );
+  const importedPicks = [...input.draft.picks]
+    .sort((a, b) => a.overallPick - b.overallPick)
+    .flatMap((pick) => {
+      const playerId = playerByExternalId.get(pick.externalPlayerId);
+      const teamId = teamByRosterId.get(pick.rosterId);
+      return playerId && teamId ? [{ ...pick, playerId, teamId }] : [];
+    });
+  const currentPicks = await prisma.draftPick.findMany({ where: { sessionId: session.id } });
+  const currentOverallPick = Math.max(0, ...currentPicks.map((pick) => pick.overallPick));
+  const newImportedPicks: typeof importedPicks = [];
+  for (const pick of importedPicks) {
+    if (pick.overallPick !== currentOverallPick + newImportedPicks.length + 1) break;
+    newImportedPicks.push(pick);
+  }
+  if (newImportedPicks.length > 0) {
+    await prisma.$transaction(async (tx) => {
+      await tx.draftPick.createMany({
+        data: newImportedPicks.map((pick) => ({
+          sessionId: session.id,
+          overallPick: pick.overallPick,
+          round: Math.ceil(pick.overallPick / teamCount),
+          teamId: pick.teamId,
+          playerId: pick.playerId,
+          source: "SLEEPER",
+        })),
+        skipDuplicates: true,
+      });
+      await tx.draftSession.update({
+        where: { id: session.id },
+        data: { version: currentPicks.length + newImportedPicks.length },
+      });
+    });
+  }
   return getDraftSession(session.id);
 }
 export async function getDraftSession(id: string) {

@@ -29,11 +29,13 @@ export function runSimulation(input: {
         0.05,
         Math.min(0.95, (250 - (candidate.adp ?? 180)) / 260 + candidate.score / 200),
       );
-      if (rand() > (draftPressure * input.picksUntilNextTurn) / 8)
+      if (rand() < (draftPressure * input.picksUntilNextTurn) / 8)
         taken.set(candidate.playerId, (taken.get(candidate.playerId) ?? 0) + 1);
     }
   return input.candidates.map((candidate) => ({
     playerId: candidate.playerId,
-    availableProbability: Number(((taken.get(candidate.playerId) ?? 0) / input.trials).toFixed(3)),
+    availableProbability: Number(
+      (1 - (taken.get(candidate.playerId) ?? 0) / input.trials).toFixed(3),
+    ),
   }));
 }

@@ -172,11 +172,13 @@ model DraftPick {
   teamId String @db.Uuid
   playerId String @db.Uuid
   source PickSource
+  idempotencyKey String?
   session DraftSession @relation(fields: [sessionId], references: [id], onDelete: Restrict)
   team DraftTeam @relation(fields: [teamId], references: [id], onDelete: Restrict)
   player Player @relation(fields: [playerId], references: [id], onDelete: Restrict)
   @@unique([sessionId, overallPick])
   @@unique([sessionId, playerId])
+  @@unique([sessionId, idempotencyKey])
 }
 model RecommendationSnapshot {
   id String @id @default(uuid()) @db.Uuid

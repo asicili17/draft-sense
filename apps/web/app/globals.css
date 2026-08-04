@@ -67,3 +67,10 @@ button:disabled {
 button.league {
   background: #0f172a;
 }
+.draft-room { display: grid; gap: .75rem; border-top: 1px solid #334155; padding-top: 1rem; }
+.draft-room ol { margin: 0; max-height: 14rem; overflow: auto; color: #bfccdf; }
+.recommendation { display: grid; gap: .3rem; padding: .8rem; border: 1px solid #334155; border-radius: .45rem; }
+.recommendation span, .recommendation small { color: #bfccdf; }
+.recommendation div { display: flex; gap: .5rem; }
+.secondary { background: #334155; }
+.explanation { border-left: 3px solid #71e2b8; padding-left: .75rem; }

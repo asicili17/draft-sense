@@ -1,5 +1,5 @@
 import { getDraftSession, prisma } from "@draft-sense/data-access";
-import { undoLatestPick } from "@draft-sense/draft-engine";
+import { DraftDomainError, undoLatestPick } from "@draft-sense/draft-engine";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { apiError } from "../../../../../../../server/http";
@@ -38,27 +38,32 @@ export async function DELETE(
       },
       body.expectedVersion,
     );
-    await prisma.$transaction([
-      prisma.draftPick.delete({
+    await prisma.$transaction(async (tx) => {
+      const deleted = await tx.draftPick.deleteMany({
         where: {
-          sessionId_overallPick: {
-            sessionId: id,
-            overallPick: Number(overallPick),
-          },
+          sessionId: id,
+          overallPick: Number(overallPick),
         },
-      }),
-      prisma.draftSession.update({
-        where: { id },
+      });
+      if (deleted.count !== 1)
+        throw new DraftDomainError("VERSION_CONFLICT", "This draft changed. Refresh and try again.");
+      const updated = await tx.draftSession.updateMany({
+        where: {
+          id,
+          version: body.expectedVersion,
+        },
         data: { version: state.version },
-      }),
-      prisma.outboxEvent.create({
+      });
+      if (updated.count !== 1)
+        throw new DraftDomainError("VERSION_CONFLICT", "This draft changed. Refresh and try again.");
+      await tx.outboxEvent.create({
         data: {
           sessionId: id,
           type: "draft.pick.undone",
           payload: { overallPick: Number(overallPick) },
         },
-      }),
-    ]);
+      });
+    });
     return NextResponse.json({ data: await getDraftSession(id) });
   } catch (error) {
     return apiError(error);

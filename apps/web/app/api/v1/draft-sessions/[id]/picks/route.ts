@@ -1,5 +1,5 @@
 import { getDraftSession, prisma } from "@draft-sense/data-access";
-import { recordPick } from "@draft-sense/draft-engine";
+import { recordPick, validateRosterPick } from "@draft-sense/draft-engine";
 import type { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -14,12 +14,17 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   try {
     const id = (await context.params).id;
     const body = bodySchema.parse(await request.json());
+    const idempotencyKey = request.headers.get("idempotency-key")?.trim();
     const session = await getDraftSession(id);
     if (!session)
       return NextResponse.json(
         { error: { code: "NOT_FOUND", message: "Draft session not found." } },
         { status: 404 },
       );
+    if (idempotencyKey) {
+      const existing = await prisma.draftPick.findFirst({ where: { sessionId: id, idempotencyKey } });
+      if (existing) return NextResponse.json({ data: await getDraftSession(id) });
+    }
     const state = recordPick(
       {
         teamCount: session.teamCount,
@@ -47,6 +52,22 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
         { error: { code: "TEAM_NOT_FOUND", message: "Draft team not found." } },
         { status: 422 },
       );
+    const player = await prisma.player.findUnique({ where: { id: body.playerId } });
+    if (!player || player.sport !== "NFL")
+      return NextResponse.json(
+        { error: { code: "PLAYER_NOT_FOUND", message: "Draft player not found." } },
+        { status: 422 },
+      );
+    const rosterPositions =
+      (session.settings as { rosterPositions?: string[] }).rosterPositions ?? [];
+    const draftedPositions = session.picks
+      .filter((pick) => pick.teamId === team.id)
+      .flatMap((pick) => pick.player.positions);
+    validateRosterPick({
+      position: player.positions[0] ?? "",
+      rosterPositions,
+      draftedPositions,
+    });
     await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const updated = await tx.draftSession.updateMany({
         where: { id, version: body.expectedVersion },
@@ -61,6 +82,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
           teamId: team.id,
           playerId: body.playerId,
           source: body.source,
+          idempotencyKey: idempotencyKey || null,
         },
       });
       await tx.outboxEvent.create({

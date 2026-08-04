@@ -1,7 +1,12 @@
 export class DraftDomainError extends Error {
   constructor(
     public readonly code:
-      "VERSION_CONFLICT" | "OUT_OF_ORDER" | "PLAYER_TAKEN" | "PICK_NOT_FOUND" | "UNDO_NOT_ALLOWED",
+      | "VERSION_CONFLICT"
+      | "OUT_OF_ORDER"
+      | "PLAYER_TAKEN"
+      | "PICK_NOT_FOUND"
+      | "UNDO_NOT_ALLOWED"
+      | "ROSTER_ILLEGAL",
     message: string,
   ) {
     super(message);
@@ -17,6 +22,25 @@ export interface DraftState {
   teamCount: number;
   version: number;
   picks: readonly DraftPickInput[];
+}
+export interface RosterPick {
+  position: string;
+  rosterPositions: readonly string[];
+  draftedPositions: readonly string[];
+}
+
+/** Ensures a manual pick cannot make the imported lineup impossible to fill. */
+export function validateRosterPick({ position, rosterPositions, draftedPositions }: RosterPick): void {
+  const required = rosterPositions.filter((slot) => slot === position).length;
+  const flexSlots = rosterPositions.filter((slot) =>
+    ["FLEX", "SUPER_FLEX", "WRRB_FLEX", "REC_FLEX"].includes(slot),
+  ).length;
+  const alreadyDrafted = draftedPositions.filter((drafted) => drafted === position).length;
+  if (required === 0 && flexSlots === 0)
+    throw new DraftDomainError("ROSTER_ILLEGAL", "That position is not eligible for this roster.");
+  // A position may fill its named slots plus a flex slot. Bench slots intentionally remain unrestricted.
+  if (alreadyDrafted >= required + flexSlots)
+    throw new DraftDomainError("ROSTER_ILLEGAL", "That roster has no eligible slot remaining.");
 }
 export function teamForOverallPick(overallPick: number, teamCount: number): number {
   if (!Number.isInteger(overallPick) || overallPick < 1 || teamCount < 2)

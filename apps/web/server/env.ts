@@ -7,6 +7,7 @@ const schema = z.object({
     .string()
     .url()
     .default("https://fantasyfootballcalculator.com/api/v1"),
+  OPENAI_API_KEY: z.string().min(1).optional(),
   CRON_SECRET: z.string().min(24).optional(),
 });
 export type Environment = z.infer<typeof schema>;

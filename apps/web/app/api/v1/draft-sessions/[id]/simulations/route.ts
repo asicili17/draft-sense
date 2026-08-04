@@ -1,5 +1,6 @@
 import { draftablePlayers, getDraftSession, prisma } from "@draft-sense/data-access";
 import { recommend } from "@draft-sense/recommendation";
+import { teamForOverallPick } from "@draft-sense/draft-engine";
 import { runSimulation } from "@draft-sense/simulation";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -20,6 +21,12 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
     const players = await draftablePlayers(id);
     const rosterPositions =
       (session.settings as { rosterPositions?: string[] }).rosterPositions ?? [];
+    const userTeam = session.teams.find((team) => team.slot === 1);
+    const roster = userTeam
+      ? session.picks
+          .filter((pick) => pick.teamId === userTeam.id)
+          .flatMap((pick) => pick.player.positions)
+      : [];
     const ranked = recommend({
       players: players.map(
         (item: {
@@ -35,12 +42,13 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
           adp: item.adp ?? undefined,
         }),
       ),
-      draftedPlayerIds: [],
+      draftedPlayerIds: session.picks.map((pick) => pick.playerId),
       rosterPositions,
-      roster: [],
+      roster,
     }).slice(0, 12);
-    const picksUntilNextTurn =
-      session.teamCount - (session.picks.length % session.teamCount || session.teamCount);
+    let nextOverallPick = session.picks.length + 1;
+    while (teamForOverallPick(nextOverallPick, session.teamCount) !== 1) nextOverallPick += 1;
+    const picksUntilNextTurn = nextOverallPick - session.picks.length - 1;
     const seed = `${id}:${session.version}:${trials}`;
     const summary = runSimulation({
       candidates: ranked.map((item: { playerId: string; score: number }) => ({

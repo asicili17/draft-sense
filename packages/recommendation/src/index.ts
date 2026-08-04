@@ -25,6 +25,13 @@ export interface Recommendation {
     adpValue: number;
     risk: number;
   };
+  normalizedFactors: {
+    vorp: number;
+    scarcity: number;
+    rosterFit: number;
+    adpValue: number;
+    risk: number;
+  };
 }
 const starters = (positions: readonly string[], position: string) =>
   positions.filter((value) => value === position).length;
@@ -59,6 +66,7 @@ export function recommend(input: RecommendationInput): readonly Recommendation[]
       };
     })
     .sort((a, b) => b.score - a.score);
+  const maxVorp = Math.max(...ranked.map((item) => Math.max(0, item.factors.vorp)), 1);
   return ranked.map((item, index) => ({
     playerId: item.player.id,
     name: item.player.name,
@@ -70,5 +78,12 @@ export function recommend(input: RecommendationInput): readonly Recommendation[]
       ).toFixed(2),
     ),
     factors: item.factors,
+    normalizedFactors: {
+      vorp: Number((Math.max(0, item.factors.vorp) / maxVorp).toFixed(3)),
+      scarcity: Number(item.factors.scarcity.toFixed(3)),
+      rosterFit: Number(item.factors.rosterFit.toFixed(3)),
+      adpValue: Number(item.factors.adpValue.toFixed(3)),
+      risk: Number(item.factors.risk.toFixed(3)),
+    },
   }));
 }

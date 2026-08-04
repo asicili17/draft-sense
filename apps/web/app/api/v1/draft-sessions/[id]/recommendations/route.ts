@@ -14,6 +14,30 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
     const rosterPositions =
       (session.settings as { rosterPositions?: string[] }).rosterPositions ?? [];
     const players = await draftablePlayers(id);
+    const userTeam = session.teams.find((team) => team.slot === 1);
+    const roster = userTeam
+      ? session.picks
+          .filter((pick) => pick.teamId === userTeam.id)
+          .flatMap((pick) => pick.player.positions)
+      : [];
+    const existingSnapshot = await prisma.recommendationSnapshot.findUnique({
+      where: {
+        sessionId_sessionVersion_algorithmVersion: {
+          sessionId: id,
+          sessionVersion: session.version,
+          algorithmVersion: ALGORITHM_VERSION,
+        },
+      },
+    });
+    if (existingSnapshot)
+      return NextResponse.json({
+        data: {
+          sessionVersion: session.version,
+          algorithmVersion: ALGORITHM_VERSION,
+          recommendations: existingSnapshot.result,
+          snapshotId: existingSnapshot.id,
+        },
+      });
     const results = recommend({
       players: players.map(
         (item: {
@@ -31,23 +55,15 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
       ),
       draftedPlayerIds: session.picks.map((pick: { playerId: string }) => pick.playerId),
       rosterPositions,
-      roster: [],
+      roster,
     });
     const resultJson = JSON.parse(JSON.stringify(results)) as never;
-    const snapshot = await prisma.recommendationSnapshot.upsert({
-      where: {
-        sessionId_sessionVersion_algorithmVersion: {
-          sessionId: id,
-          sessionVersion: session.version,
-          algorithmVersion: ALGORITHM_VERSION,
-        },
-      },
-      update: { result: resultJson },
-      create: {
+    const snapshot = await prisma.recommendationSnapshot.create({
+      data: {
         sessionId: id,
         sessionVersion: session.version,
         algorithmVersion: ALGORITHM_VERSION,
-        input: { rosterPositions, datasetId: session.datasetId },
+        input: { rosterPositions, roster, datasetId: session.datasetId },
         result: resultJson,
       },
     });
