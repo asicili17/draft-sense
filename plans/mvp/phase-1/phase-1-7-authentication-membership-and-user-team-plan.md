@@ -9,6 +9,8 @@ Phase 1.7 replaces the MVP’s implicit local user and hard-coded team slot with
 
 ## Context & Analysis
 
+**Authentication decision:** Use Clerk for managed identity, sessions, OAuth, account recovery, and sign-in/up flows. DraftSense owns its visual experience and all domain authorization: custom login/onboarding presentation, league membership, selected team, commissioner permissions, provider-link ownership, and draft-session checks remain in this repository and PostgreSQL. Clerk Organizations are not the source of truth for leagues in this phase; a fantasy league is a domain entity with rules that differ from generic SaaS tenancy.
+
 **Relevant Files:**
 - `packages/data-access/prisma/schema.prisma`: users, leagues, sessions, and draft teams.
 - `apps/web/app/api/v1/`: endpoints currently lacking an actor boundary.
@@ -22,10 +24,13 @@ Phase 1.7 replaces the MVP’s implicit local user and hard-coded team slot with
 
 **Dependencies:**
 - Phase 1.6 migration workflow and integration test harness.
-- A chosen authentication provider/session strategy.
+- Clerk application keys configured for local, preview, and production environments.
+- Clerk's Next.js App Router SDK.
 
 **Patterns & Conventions:**
 - Server derives actor identity from a verified session; clients never submit owner IDs.
+- Clerk is used server-side to verify the session and obtain the immutable Clerk user ID. The application maps that ID to its own `User` record.
+- Clerk-hosted authentication components may be embedded and themed, but DraftSense pages, layouts, onboarding, league/team screens, and authorization decisions remain custom.
 - Provider credentials remain private to their owner.
 - Team ownership and league viewing permissions are explicit and auditable.
 
@@ -36,8 +41,9 @@ Phase 1.7 replaces the MVP’s implicit local user and hard-coded team slot with
 **Objective:** Persist authenticated identities and their authorized league relationships.
 
 **Files to Modify/Create:**
-- `packages/data-access/prisma/schema.prisma`: identity/session adapter fields and `LeagueMember` model.
-- `apps/web/server/auth/`: provider integration and `requireUser()` helpers.
+- `packages/data-access/prisma/schema.prisma`: Clerk external identity field and `LeagueMember` model.
+- `apps/web/server/auth/`: Clerk integration, user synchronization, and `requireUser()`/authorization helpers.
+- `apps/web/app/(auth)/`: custom DraftSense sign-in, sign-up, and onboarding screens using themed Clerk components or Clerk headless APIs.
 - `apps/web/app/api/v1/`: authenticated route boundary.
 
 **Tests to Write:**
@@ -46,16 +52,20 @@ Phase 1.7 replaces the MVP’s implicit local user and hard-coded team slot with
 - `non-member-cannot-read-session`
 
 **Steps:**
-1. Choose the auth provider and session transport.
-2. Add migration-backed membership roles such as owner, editor, and viewer.
-3. Replace the default local user with the authenticated actor during import.
-4. Add reusable route authorization helpers.
-5. Ensure all scoped queries filter through authorized session/league access.
+1. Install and configure Clerk's Next.js SDK with environment-specific publishable and secret keys; protect app/API routes with Clerk middleware.
+2. Create custom DraftSense auth/onboarding UI. Use Clerk only for identity widgets or headless auth calls, themed to the existing visual system; do not redirect users into a generic product shell.
+3. Add a unique Clerk user ID to the local `User` model and create/find the local user from the verified Clerk actor. Keep application display data synchronized deliberately rather than trusting client-supplied profile fields.
+4. Add migration-backed `LeagueMember` roles: owner, editor, and viewer. A membership is authoritative for DraftSense league access even if Clerk Organizations are enabled later for account management.
+5. Replace the default local user with the authenticated actor during import and scope provider links to that actor.
+6. Add reusable `requireUser()`, `requireLeagueMembership()`, and `requireSessionAccess()` helpers. Route handlers must authorize before reading or mutating draft data.
+7. Ensure all scoped queries filter through authorized session/league access, including recommendations, simulations, explanations, and future real-time subscriptions.
 
 **Acceptance Criteria:**
 - [ ] Every draft-session endpoint has a verified actor.
 - [ ] Users can access only leagues and sessions they are authorized to view.
 - [ ] Provider links are owned by the importing user.
+- [ ] Sign-in, sign-up, account, and onboarding presentation remains DraftSense-branded and custom.
+- [ ] Clerk user identity is never accepted from a client request body or used as the sole authorization check for a league.
 
 ---
 
@@ -79,7 +89,7 @@ Phase 1.7 replaces the MVP’s implicit local user and hard-coded team slot with
 2. Let authorized users choose their roster during session setup/resume.
 3. Derive manual pick team, roster, and next-turn calculations server-side.
 4. Remove client-provided team slot from mutation requests where possible.
-5. Render team identity and permissions in the draft room.
+5. Render team identity and permissions in the custom DraftSense draft room; Clerk UI is limited to account/auth interactions.
 
 **Acceptance Criteria:**
 - [ ] Recommendations use the authenticated user’s selected roster.
@@ -96,7 +106,11 @@ Phase 1.7 replaces the MVP’s implicit local user and hard-coded team slot with
 ## Risks & Mitigation
 
 - **Risk:** Auth choice blocks local development.
-  - **Mitigation:** Support a documented local development identity flow while preserving the same server authorization interface.
+  - **Mitigation:** Configure a separate Clerk development instance and document local keys. Tests use a mocked verified-actor boundary rather than a real Clerk network call.
+- **Risk:** Clerk Organizations are mistaken for fantasy-league authorization.
+  - **Mitigation:** Store `LeagueMember`, selected-team assignment, and all session permissions in PostgreSQL; use server-side checks for every API route.
+- **Risk:** Hosted auth UI dilutes product identity.
+  - **Mitigation:** Build DraftSense-owned auth and onboarding layouts, theme any embedded Clerk components, and reserve Clerk's prebuilt UI for account-management flows where it meaningfully reduces risk.
 - **Risk:** Membership expands into commissioner features.
   - **Mitigation:** Limit roles to access and pick permission; defer invitations and administration.
 
