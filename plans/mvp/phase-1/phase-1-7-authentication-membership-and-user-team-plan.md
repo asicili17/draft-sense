@@ -9,13 +9,13 @@ Phase 1.7 replaces the MVP’s implicit local user and hard-coded team slot with
 
 ## Context & Analysis
 
-**Authentication decision:** Use Clerk for managed identity, sessions, OAuth, account recovery, and sign-in/up flows. DraftSense owns its visual experience and all domain authorization: custom login/onboarding presentation, league membership, selected team, commissioner permissions, provider-link ownership, and draft-session checks remain in this repository and PostgreSQL. Clerk Organizations are not the source of truth for leagues in this phase; a fantasy league is a domain entity with rules that differ from generic SaaS tenancy.
+**Authentication decision:** Use Clerk for managed identity, sessions, OAuth, account recovery, and sign-in/up flows. DraftSense owns its visual experience and authorization: custom login/onboarding presentation, private league/session ownership, selected team, provider-link ownership, and draft-session checks remain in this repository and PostgreSQL. Do not add collaboration, invitations, commissioner permissions, or Clerk Organizations in this phase.
 
 **Relevant Files:**
 - `packages/data-access/prisma/schema.prisma`: users, leagues, sessions, and draft teams.
 - `apps/web/app/api/v1/`: endpoints currently lacking an actor boundary.
 - `docs/api-design.md`: authenticated API contract.
-- `docs/database-schema.md`: intended LeagueMember and team ownership relationships.
+- `docs/database-schema.md`: intended team ownership relationships.
 
 **Key Functions/Classes:**
 - `importSleeperLeague()` in `packages/data-access/`.
@@ -41,28 +41,27 @@ Phase 1.7 replaces the MVP’s implicit local user and hard-coded team slot with
 **Objective:** Persist authenticated identities and their authorized league relationships.
 
 **Files to Modify/Create:**
-- `packages/data-access/prisma/schema.prisma`: Clerk external identity field and `LeagueMember` model.
+- `packages/data-access/prisma/schema.prisma`: Clerk external identity field and selected-team relation.
 - `apps/web/server/auth/`: Clerk integration, user synchronization, and `requireUser()`/authorization helpers.
 - `apps/web/app/(auth)/`: custom DraftSense sign-in, sign-up, and onboarding screens using themed Clerk components or Clerk headless APIs.
 - `apps/web/app/api/v1/`: authenticated route boundary.
 
 **Tests to Write:**
 - `unauthenticated-request-rejected`
-- `league-member-can-read-session`
-- `non-member-cannot-read-session`
+- `owner-can-read-session`
+- `different-user-cannot-read-session`
 
 **Steps:**
 1. Install and configure Clerk's Next.js SDK with environment-specific publishable and secret keys; protect app/API routes with Clerk middleware.
 2. Create custom DraftSense auth/onboarding UI. Use Clerk only for identity widgets or headless auth calls, themed to the existing visual system; do not redirect users into a generic product shell.
 3. Add a unique Clerk user ID to the local `User` model and create/find the local user from the verified Clerk actor. Keep application display data synchronized deliberately rather than trusting client-supplied profile fields.
-4. Add migration-backed `LeagueMember` roles: owner, editor, and viewer. A membership is authoritative for DraftSense league access even if Clerk Organizations are enabled later for account management.
-5. Replace the default local user with the authenticated actor during import and scope provider links to that actor.
-6. Add reusable `requireUser()`, `requireLeagueMembership()`, and `requireSessionAccess()` helpers. Route handlers must authorize before reading or mutating draft data.
-7. Ensure all scoped queries filter through authorized session/league access, including recommendations, simulations, explanations, and future real-time subscriptions.
+4. Replace the default local user with the authenticated actor during import and scope the league, session, and provider link to that actor.
+5. Add reusable `requireUser()` and `requireSessionAccess()` helpers. Route handlers must authorize ownership before reading or mutating draft data.
+6. Ensure all scoped queries verify the authenticated owner, including recommendations, simulations, explanations, and future real-time subscriptions.
 
 **Acceptance Criteria:**
 - [ ] Every draft-session endpoint has a verified actor.
-- [ ] Users can access only leagues and sessions they are authorized to view.
+- [ ] Users can access only their own leagues and sessions.
 - [ ] Provider links are owned by the importing user.
 - [ ] Sign-in, sign-up, account, and onboarding presentation remains DraftSense-branded and custom.
 - [ ] Clerk user identity is never accepted from a client request body or used as the sole authorization check for a league.

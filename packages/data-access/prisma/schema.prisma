@@ -42,10 +42,12 @@ enum ProviderImportStatus {
 
 model User {
   id String @id @default(uuid()) @db.Uuid
+  clerkUserId String? @unique
   email String @unique
   displayName String
   leagues League[] @relation("LeagueOwner")
   sessions DraftSession[] @relation("SessionOwner")
+  teamSelections UserDraftTeamSelection[]
 }
 model League {
   id String @id @default(uuid()) @db.Uuid
@@ -154,6 +156,7 @@ model DraftSession {
   recommendations RecommendationSnapshot[]
   simulations SimulationRun[]
   outboxEvents OutboxEvent[]
+  teamSelections UserDraftTeamSelection[]
 }
 model DraftTeam {
   id String @id @default(uuid()) @db.Uuid
@@ -162,7 +165,21 @@ model DraftTeam {
   name String
   session DraftSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   picks DraftPick[]
+  selections UserDraftTeamSelection[]
   @@unique([sessionId, slot])
+}
+model UserDraftTeamSelection {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  sessionId String @db.Uuid
+  teamId String @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session DraftSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  team DraftTeam @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  @@unique([userId, sessionId])
+  @@index([sessionId, teamId])
 }
 model DraftPick {
   id String @id @default(uuid()) @db.Uuid

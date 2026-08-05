@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
         {
           error: {
             code: "PROJECTIONS_NOT_CONFIGURED",
-            message: "Add MYSPORTSFEEDS_API_KEY first.",
+            message: "Add FANTASYPROS_API_KEY first.",
           },
         },
         { status: 503 },

@@ -2,9 +2,16 @@ import { draftablePlayers, getDraftSession, prisma } from "@draft-sense/data-acc
 import { ALGORITHM_VERSION, recommend } from "@draft-sense/recommendation";
 import { NextResponse } from "next/server";
 import { apiError } from "../../../../../../server/http";
+import { requireSelectedTeam, requireSessionAccess } from "../../../../../../server/auth";
 export async function GET(_: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const id = (await context.params).id;
+    const { user, session: authorizedSession } = await requireSessionAccess(id);
+    if (!authorizedSession)
+      return NextResponse.json(
+        { error: { code: "NOT_FOUND", message: "Draft session not found." } },
+        { status: 404 },
+      );
     const session = await getDraftSession(id);
     if (!session)
       return NextResponse.json(
@@ -14,18 +21,17 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
     const rosterPositions =
       (session.settings as { rosterPositions?: string[] }).rosterPositions ?? [];
     const players = await draftablePlayers(id);
-    const userTeam = session.teams.find((team) => team.slot === 1);
-    const roster = userTeam
-      ? session.picks
-          .filter((pick) => pick.teamId === userTeam.id)
-          .flatMap((pick) => pick.player.positions)
-      : [];
+    const userTeam = await requireSelectedTeam(id, user.id);
+    const algorithmVersion = `${ALGORITHM_VERSION}:team:${userTeam.id}`;
+    const roster = session.picks
+      .filter((pick) => pick.teamId === userTeam.id)
+      .flatMap((pick) => pick.player.positions);
     const existingSnapshot = await prisma.recommendationSnapshot.findUnique({
       where: {
         sessionId_sessionVersion_algorithmVersion: {
           sessionId: id,
           sessionVersion: session.version,
-          algorithmVersion: ALGORITHM_VERSION,
+          algorithmVersion,
         },
       },
     });
@@ -33,7 +39,7 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
       return NextResponse.json({
         data: {
           sessionVersion: session.version,
-          algorithmVersion: ALGORITHM_VERSION,
+          algorithmVersion,
           recommendations: existingSnapshot.result,
           snapshotId: existingSnapshot.id,
         },
@@ -62,8 +68,13 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
       data: {
         sessionId: id,
         sessionVersion: session.version,
-        algorithmVersion: ALGORITHM_VERSION,
-        input: { rosterPositions, roster, datasetId: session.datasetId },
+        algorithmVersion,
+        input: {
+          rosterPositions,
+          roster,
+          selectedTeamId: userTeam.id,
+          datasetId: session.datasetId,
+        },
         result: resultJson,
       },
     });

@@ -2,6 +2,7 @@ import { getDraftSession, prisma } from "@draft-sense/data-access";
 import { DraftDomainError, undoLatestPick } from "@draft-sense/draft-engine";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { requireSessionAccess } from "../../../../../../../server/auth";
 import { apiError } from "../../../../../../../server/http";
 const bodySchema = z.object({
   expectedVersion: z.number().int().nonnegative(),
@@ -13,6 +14,12 @@ export async function DELETE(
   try {
     const { id, overallPick } = await context.params;
     const body = bodySchema.parse(await request.json());
+    const { session: authorizedSession } = await requireSessionAccess(id, true);
+    if (!authorizedSession)
+      return NextResponse.json(
+        { error: { code: "NOT_FOUND", message: "Draft session not found." } },
+        { status: 404 },
+      );
     const session = await getDraftSession(id);
     if (!session || Number(overallPick) !== session.picks.length)
       return NextResponse.json(
@@ -46,7 +53,10 @@ export async function DELETE(
         },
       });
       if (deleted.count !== 1)
-        throw new DraftDomainError("VERSION_CONFLICT", "This draft changed. Refresh and try again.");
+        throw new DraftDomainError(
+          "VERSION_CONFLICT",
+          "This draft changed. Refresh and try again.",
+        );
       const updated = await tx.draftSession.updateMany({
         where: {
           id,
@@ -55,7 +65,10 @@ export async function DELETE(
         data: { version: state.version },
       });
       if (updated.count !== 1)
-        throw new DraftDomainError("VERSION_CONFLICT", "This draft changed. Refresh and try again.");
+        throw new DraftDomainError(
+          "VERSION_CONFLICT",
+          "This draft changed. Refresh and try again.",
+        );
       await tx.outboxEvent.create({
         data: {
           sessionId: id,

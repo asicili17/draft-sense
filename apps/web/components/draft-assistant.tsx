@@ -2,6 +2,11 @@
 import { useCallback, useEffect, useState } from "react";
 
 type League = { externalLeagueId: string; name: string; draftId?: string };
+type ImportPreview = {
+  league: League;
+  teams: { slot: number; name: string }[];
+  selectedTeamSlot: number;
+};
 type Recommendation = {
   playerId: string;
   name: string;
@@ -12,7 +17,8 @@ type Recommendation = {
 type Session = {
   id: string;
   version: number;
-  teams: { name: string; slot: number }[];
+  selectedTeamId: string | null;
+  teams: { id: string; name: string; slot: number }[];
   picks: { overallPick: number; player: { fullName: string }; team: { name: string } }[];
   settings?: { source?: { leagueId?: string; draftId?: string } };
 };
@@ -26,6 +32,7 @@ export function DraftAssistant() {
   const [message, setMessage] = useState("");
   const [explanation, setExplanation] = useState("");
   const [source, setSource] = useState<{ leagueId: string; draftId: string } | null>(null);
+  const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
 
   const refresh = useCallback(async (id: string) => {
     const [sessionResponse, recommendationResponse] = await Promise.all([
@@ -49,17 +56,63 @@ export function DraftAssistant() {
 
   const findLeagues = async () => {
     setMessage("Looking up your Sleeper leagues…");
-    const response = await fetch(`/api/v1/integrations/sleeper/leagues?username=${encodeURIComponent(username)}`);
+    const response = await fetch(
+      `/api/v1/integrations/sleeper/leagues?username=${encodeURIComponent(username)}`,
+    );
     const payload = await response.json();
     if (!response.ok) return setMessage(payload.error.message);
     setLeagues(payload.data);
-    setMessage(payload.data.length ? "Choose a league to create its draft room." : "No NFL leagues found.");
+    setMessage(
+      payload.data.length ? "Choose a league to create its draft room." : "No NFL leagues found.",
+    );
+  };
+  const previewLeagueImport = async (league: League) => {
+    if (!league.draftId) return setMessage("Sleeper has not created a draft for this league yet.");
+    setMessage("Loading league teams...");
+    const response = await fetch("/api/v1/draft-sessions/imports/sleeper", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        leagueId: league.externalLeagueId,
+        draftId: league.draftId,
+        preview: true,
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok) return setMessage(payload.error.message);
+    const teams = payload.data.teams as { slot: number; name: string }[];
+    const firstTeam = teams[0];
+    if (!firstTeam) return setMessage("Sleeper did not return any draft teams for this league.");
+    setImportPreview({ league, teams, selectedTeamSlot: firstTeam.slot });
+    setMessage("Choose your team before creating this private draft room.");
+  };
+  const confirmLeagueImport = async () => {
+    if (!importPreview?.league.draftId) return;
+    setMessage("Creating your draft room...");
+    const response = await fetch("/api/v1/draft-sessions/imports/sleeper", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        leagueId: importPreview.league.externalLeagueId,
+        draftId: importPreview.league.draftId,
+        selectedTeamSlot: importPreview.selectedTeamSlot,
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok) return setMessage(payload.error.message);
+    setSession(payload.data);
+    const importedSource = payload.data.settings?.source;
+    if (importedSource?.leagueId && importedSource?.draftId) setSource(importedSource);
+    setImportPreview(null);
+    await refresh(payload.data.id);
+    setMessage("Draft room synchronized. The board refreshes every 10 seconds.");
   };
   const importLeague = async (league: League) => {
     if (!league.draftId) return setMessage("Sleeper has not created a draft for this league yet.");
     setMessage("Creating your draft room…");
     const response = await fetch("/api/v1/draft-sessions/imports/sleeper", {
-      method: "POST", headers: { "content-type": "application/json" },
+      method: "POST",
+      headers: { "content-type": "application/json" },
       body: JSON.stringify({ leagueId: league.externalLeagueId, draftId: league.draftId }),
     });
     const payload = await response.json();
@@ -71,9 +124,14 @@ export function DraftAssistant() {
     setMessage("Draft room synchronized. The board refreshes every 10 seconds.");
   };
   const refreshFromSleeper = async () => {
-    if (!source) return;
+    const selectedTeamSlot = session?.teams.find(
+      (team) => team.id === session.selectedTeamId,
+    )?.slot;
+    if (!source || !selectedTeamSlot) return;
     const response = await fetch("/api/v1/draft-sessions/imports/sleeper", {
-      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(source),
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...source, selectedTeamSlot }),
     });
     const payload = await response.json();
     if (!response.ok) return setMessage(payload.error.message);
@@ -85,7 +143,18 @@ export function DraftAssistant() {
     const response = await fetch(`/api/v1/draft-sessions/${session.id}/picks`, {
       method: "POST",
       headers: { "content-type": "application/json", "idempotency-key": crypto.randomUUID() },
-      body: JSON.stringify({ playerId, teamSlot: 1, expectedVersion: session.version, source: "MANUAL" }),
+      body: JSON.stringify({ playerId, expectedVersion: session.version, source: "MANUAL" }),
+    });
+    const payload = await response.json();
+    if (!response.ok) return setMessage(payload.error.message);
+    await refresh(session.id);
+  };
+  const selectTeam = async (selectedTeamId: string) => {
+    if (!session) return;
+    const response = await fetch(`/api/v1/draft-sessions/${session.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ selectedTeamId }),
     });
     const payload = await response.json();
     if (!response.ok) return setMessage(payload.error.message);
@@ -93,30 +162,121 @@ export function DraftAssistant() {
   };
   const explain = async (playerId: string) => {
     if (!session || !snapshotId) return;
-    const response = await fetch(`/api/v1/draft-sessions/${session.id}/recommendations/explanation`, {
-      method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ snapshotId, playerId }),
-    });
+    const response = await fetch(
+      `/api/v1/draft-sessions/${session.id}/recommendations/explanation`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ snapshotId, playerId }),
+      },
+    );
     const payload = await response.json();
     if (!response.ok) return setMessage(payload.error.message);
     setExplanation(`${payload.data.summary} ${payload.data.uncertainty}`);
   };
-  return <section className="assistant">
-    <label>Sleeper username<input value={username} onChange={(event) => setUsername(event.target.value)} placeholder="your-sleeper-name" /></label>
-    <button onClick={findLeagues} disabled={!username}>Find leagues</button>
-    <p aria-live="polite">{message}</p>
-    {leagues.map((league) => <button className="league" key={league.externalLeagueId} onClick={() => importLeague(league)}>{league.name}</button>)}
-    {session && <div className="draft-room">
-      <h2>Live draft board</h2><p>Version {session.version} · {session.teams.length} teams</p>
-      <ol>{session.picks.map((pick) => <li key={pick.overallPick}>{pick.overallPick}. {pick.player.fullName} — {pick.team.name}</li>)}</ol>
-      <button onClick={refreshFromSleeper} disabled={!source}>Refresh from Sleeper</button>
-      <h3>Recommendations</h3>
-      {recommendations.slice(0, 5).map((item) => <article className="recommendation" key={item.playerId}>
-        <strong>{item.name}</strong><span> Score {item.score} · confidence {Math.round(item.confidence * 100)}%</span>
-        <small>VORP {item.factors.vorp.toFixed(1)} · roster fit {item.factors.rosterFit.toFixed(2)}</small>
-        <div><button onClick={() => recordPick(item.playerId)}>Record as my pick</button><button className="secondary" onClick={() => explain(item.playerId)}>Why?</button></div>
-      </article>)}
-      {explanation && <p className="explanation">{explanation}</p>}
-    </div>}
-  </section>;
+  return (
+    <section className="assistant">
+      <label>
+        Sleeper username
+        <input
+          value={username}
+          onChange={(event) => setUsername(event.target.value)}
+          placeholder="your-sleeper-name"
+        />
+      </label>
+      <button onClick={findLeagues} disabled={!username}>
+        Find leagues
+      </button>
+      <p aria-live="polite">{message}</p>
+      {leagues.map((league) => (
+        <button
+          className="league"
+          key={league.externalLeagueId}
+          onClick={() => void previewLeagueImport(league)}
+        >
+          {league.name}
+        </button>
+      ))}
+      {importPreview && (
+        <section className="team-preview" aria-label="Choose your draft team">
+          <h2>{importPreview.league.name}</h2>
+          <label>
+            Which team is yours?
+            <select
+              value={importPreview.selectedTeamSlot}
+              onChange={(event) =>
+                setImportPreview({ ...importPreview, selectedTeamSlot: Number(event.target.value) })
+              }
+            >
+              {importPreview.teams.map((team) => (
+                <option key={team.slot} value={team.slot}>
+                  {team.name} (slot {team.slot})
+                </option>
+              ))}
+            </select>
+          </label>
+          <div>
+            <button onClick={() => void confirmLeagueImport()}>Create private draft room</button>
+            <button className="secondary" onClick={() => setImportPreview(null)}>
+              Cancel
+            </button>
+          </div>
+        </section>
+      )}
+      {session && (
+        <div className="draft-room">
+          <h2>Live draft board</h2>
+          <p>
+            Version {session.version} · {session.teams.length} teams
+          </p>
+          <label>
+            My draft team
+            <select
+              value={session.selectedTeamId ?? ""}
+              onChange={(event) => void selectTeam(event.target.value)}
+            >
+              <option value="" disabled>
+                Select your team
+              </option>
+              {session.teams.map((team) => (
+                <option key={team.id} value={team.id}>
+                  {team.name} (slot {team.slot})
+                </option>
+              ))}
+            </select>
+          </label>
+          <ol>
+            {session.picks.map((pick) => (
+              <li key={pick.overallPick}>
+                {pick.overallPick}. {pick.player.fullName} — {pick.team.name}
+              </li>
+            ))}
+          </ol>
+          <button onClick={refreshFromSleeper} disabled={!source}>
+            Refresh from Sleeper
+          </button>
+          <h3>Recommendations</h3>
+          {recommendations.slice(0, 5).map((item) => (
+            <article className="recommendation" key={item.playerId}>
+              <strong>{item.name}</strong>
+              <span>
+                {" "}
+                Score {item.score} · confidence {Math.round(item.confidence * 100)}%
+              </span>
+              <small>
+                VORP {item.factors.vorp.toFixed(1)} · roster fit {item.factors.rosterFit.toFixed(2)}
+              </small>
+              <div>
+                <button onClick={() => recordPick(item.playerId)}>Record as my pick</button>
+                <button className="secondary" onClick={() => explain(item.playerId)}>
+                  Why?
+                </button>
+              </div>
+            </article>
+          ))}
+          {explanation && <p className="explanation">{explanation}</p>}
+        </div>
+      )}
+    </section>
+  );
 }

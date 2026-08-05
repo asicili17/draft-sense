@@ -1,8 +1,10 @@
 import { z } from "zod";
 const schema = z.object({
   DATABASE_URL: z.string().url().optional(),
+  NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z.string().min(1).optional(),
+  CLERK_SECRET_KEY: z.string().min(1).optional(),
   SLEEPER_API_BASE_URL: z.string().url().default("https://api.sleeper.app/v1"),
-  MYSPORTSFEEDS_API_KEY: z.string().min(1).optional(),
+  FANTASYPROS_API_KEY: z.string().min(1).optional(),
   FANTASY_FOOTBALL_CALCULATOR_API_BASE_URL: z
     .string()
     .url()

@@ -3,6 +3,7 @@ import { prisma } from "../prisma";
 
 async function clearDatabase() {
   await prisma.outboxEvent.deleteMany();
+  await prisma.userDraftTeamSelection.deleteMany();
   await prisma.recommendationSnapshot.deleteMany();
   await prisma.draftPick.deleteMany();
   await prisma.draftTeam.deleteMany();

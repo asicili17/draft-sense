@@ -2,6 +2,7 @@ import { prisma } from "@draft-sense/data-access";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { apiError } from "../../../../../../../server/http";
+import { requireSessionAccess } from "../../../../../../../server/auth";
 
 const requestSchema = z.object({ snapshotId: z.string().uuid(), playerId: z.string().uuid() });
 const modelSchema = z.object({
@@ -28,6 +29,12 @@ function fallback(name: string, confidence: number, factors: Record<string, numb
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
     const id = (await context.params).id;
+    const { session: authorizedSession } = await requireSessionAccess(id);
+    if (!authorizedSession)
+      return NextResponse.json(
+        { error: { code: "NOT_FOUND", message: "Draft session not found." } },
+        { status: 404 },
+      );
     const body = requestSchema.parse(await request.json());
     const now = Date.now();
     const requests = (recentRequests.get(id) ?? []).filter((time) => now - time < 60_000);
@@ -53,7 +60,11 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
           name: z.string(),
           confidence: z.number(),
           factors: z.object({
-            vorp: z.number(), scarcity: z.number(), rosterFit: z.number(), adpValue: z.number(), risk: z.number(),
+            vorp: z.number(),
+            scarcity: z.number(),
+            rosterFit: z.number(),
+            adpValue: z.number(),
+            risk: z.number(),
           }),
         }),
       )
@@ -70,7 +81,10 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     if (!process.env.OPENAI_API_KEY) return NextResponse.json({ data: template });
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
-      headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, "content-type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        "content-type": "application/json",
+      },
       body: JSON.stringify({
         model: "gpt-4.1-mini",
         input: `Explain this already-selected fantasy recommendation using only these facts: ${JSON.stringify(selected)}. Return JSON with summary, supportingFactors, tradeoffs, uncertainty. Do not make injury, news, or outcome claims.`,
@@ -79,8 +93,13 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       signal: AbortSignal.timeout(8_000),
     });
     const payload = (await response.json()) as { output_text?: string };
-    const explanation = response.ok && payload.output_text ? modelSchema.safeParse(JSON.parse(payload.output_text)) : null;
-    return NextResponse.json({ data: explanation?.success ? { source: "openai", ...explanation.data } : template });
+    const explanation =
+      response.ok && payload.output_text
+        ? modelSchema.safeParse(JSON.parse(payload.output_text))
+        : null;
+    return NextResponse.json({
+      data: explanation?.success ? { source: "openai", ...explanation.data } : template,
+    });
   } catch (error) {
     return apiError(error);
   }

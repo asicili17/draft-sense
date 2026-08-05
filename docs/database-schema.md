@@ -7,9 +7,8 @@ The following is a model outline, not implementation code. IDs are UUIDs; timest
 | Model                    | Key fields and relationships                                                                                       | Purpose                                                                                         |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
 | `User`                   | `id`, `email`, `displayName`; has many `League`, `DraftSession`                                                    | Account ownership and identity.                                                                 |
-| `League`                 | `id`, `ownerId`, `sport`, `name`; has many `LeagueMember`, `DraftSession`                                          | Persistent league context.                                                                      |
+| `League`                 | `id`, `ownerId`, `sport`, `name`; has many `DraftSession`                                                          | Private league context owned by the importing user.                                             |
 | `LeagueIntegration`      | `leagueId`, `provider`, `externalLeagueId`, `externalDraftId?`, `lastSyncedAt`                                     | Link to a league platform; unique `(provider, externalLeagueId)`.                               |
-| `LeagueMember`           | `leagueId`, `userId`, `role`                                                                                       | League membership and authorization.                                                            |
 | `ScoringFormat`          | `id`, `sport`, `name`, `rules Json`, `version`                                                                     | Versioned scoring and roster rules.                                                             |
 | `Player`                 | `id`, `sport`, identity fields, `positions`                                                                        | Canonical player identity owned by DraftSense.                                                  |
 | `PlayerExternalIdentity` | `playerId`, `provider`, `externalId`, `metadata Json`                                                              | Provider-specific player mapping; unique `(provider, externalId)`.                              |
@@ -17,7 +16,8 @@ The following is a model outline, not implementation code. IDs are UUIDs; timest
 | `ProviderImport`         | `id`, `provider`, `kind`, `retrievedAt`, `status`, `payloadHash`, `diagnostics Json`                               | Auditable result of an external import; links to published datasets when successful.            |
 | `PlayerProjection`       | `datasetId`, `playerId`, `scoringFormatId`, `projectedPoints`, `adp`, `risk`, `metadata Json`                      | Dataset-specific player forecast.                                                               |
 | `DraftSession`           | `id`, `leagueId?`, `ownerId`, `sport`, `status`, `draftType`, `teamCount`, `settings Json`, `datasetId`, `version` | A versioned live draft aggregate.                                                               |
-| `DraftTeam`              | `sessionId`, `slot`, `name`, `userId?`, `strategy Json`                                                            | One drafting entity and its configuration.                                                      |
+| `DraftTeam`              | `sessionId`, `slot`, `name`                                                                                         | One drafting entity in the imported league.                                                     |
+| `UserDraftTeamSelection` | `userId`, `sessionId`, `teamId`                                                                                    | The owner's selected roster, used for recommendations and manual picks.                         |
 | `DraftPick`              | `sessionId`, `overallPick`, `round`, `teamId`, `playerId`, `source`, `createdAt`                                   | Immutable selected player event; unique `(sessionId, overallPick)` and `(sessionId, playerId)`. |
 | `RecommendationSnapshot` | `sessionId`, `version`, `algorithmVersion`, `input Json`, `results Json`                                           | Auditable deterministic output, unique `(sessionId, version, algorithmVersion)`.                |
 | `SimulationRun`          | `sessionId`, `version`, `config Json`, `summary Json`, `status`                                                    | Persisted reproducibility metadata and aggregated results.                                      |
@@ -27,7 +27,7 @@ Foreign keys use restrictive deletion for draft history and cascading deletion o
 
 ## Relationships
 
-A league has members and sessions. A session has draft teams, picks, recommendation snapshots, and simulation runs, and pins one projection dataset. A player has many provider identities and projections, and can be selected in many historical sessions, but only once in a given session. A scoring format applies to many projections and sessions.
+A user owns private leagues and sessions. A session has draft teams, picks, recommendation snapshots, simulation runs, and one selected team for its owner; it pins one projection dataset. A player has many provider identities and projections, and can be selected in many historical sessions, but only once in a given session. A scoring format applies to many projections and sessions.
 
 ## Postgres versus Redis
 

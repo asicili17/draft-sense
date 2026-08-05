@@ -5,6 +5,7 @@ import { prisma } from "./prisma";
 
 async function clearDatabase() {
   await prisma.outboxEvent.deleteMany();
+  await prisma.userDraftTeamSelection.deleteMany();
   await prisma.recommendationSnapshot.deleteMany();
   await prisma.draftPick.deleteMany();
   await prisma.draftTeam.deleteMany();
@@ -45,7 +46,23 @@ describe("Sleeper session import", () => {
   beforeEach(clearDatabase);
   afterAll(() => prisma.$disconnect());
 
+  it("rolls back the import when the selected Sleeper team is invalid", async () => {
+    const owner = await prisma.user.create({
+      data: { email: "failed-import@draftsense.test", displayName: "Failed import owner" },
+    });
+
+    await expect(
+      importSleeperLeague({ ...source, ownerId: owner.id, selectedTeamSlot: 99 }),
+    ).rejects.toThrow("selected Sleeper team");
+    await expect(prisma.league.count()).resolves.toBe(0);
+    await expect(prisma.draftSession.count()).resolves.toBe(0);
+    await expect(prisma.draftTeam.count()).resolves.toBe(0);
+  });
+
   it("creates a draft session from a normalized provider snapshot", async () => {
+    const owner = await prisma.user.create({
+      data: { email: "import-owner@draftsense.test", displayName: "Import owner" },
+    });
     const player = await prisma.player.create({
       data: { sport: "NFL", fullName: "Imported player", positions: ["QB"] },
     });
@@ -53,7 +70,11 @@ describe("Sleeper session import", () => {
       data: { playerId: player.id, provider: "sleeper", externalId: "sleeper-player-1" },
     });
 
-    const session = await importSleeperLeague(source);
+    const session = await importSleeperLeague({
+      ...source,
+      ownerId: owner.id,
+      selectedTeamSlot: 1,
+    });
 
     expect(session).toMatchObject({ status: "LIVE", teamCount: 2, version: 1 });
     expect(session?.teams).toHaveLength(2);
@@ -64,10 +85,18 @@ describe("Sleeper session import", () => {
   });
 
   it("refreshes provider state without replacing existing manual picks", async () => {
+    const owner = await prisma.user.create({
+      data: { email: "manual-owner@draftsense.test", displayName: "Manual owner" },
+    });
     const player = await prisma.player.create({
       data: { sport: "NFL", fullName: "Manual player", positions: ["QB"] },
     });
-    const session = await importSleeperLeague({ ...source, draft: { ...source.draft, picks: [] } });
+    const session = await importSleeperLeague({
+      ...source,
+      ownerId: owner.id,
+      selectedTeamSlot: 1,
+      draft: { ...source.draft, picks: [] },
+    });
     const team = session?.teams[0];
     if (!session || !team) throw new Error("Expected imported session and team");
     await prisma.draftPick.create({
@@ -84,6 +113,8 @@ describe("Sleeper session import", () => {
 
     const refreshed = await importSleeperLeague({
       ...source,
+      ownerId: owner.id,
+      selectedTeamSlot: 1,
       draft: { ...source.draft, picks: [] },
     });
 

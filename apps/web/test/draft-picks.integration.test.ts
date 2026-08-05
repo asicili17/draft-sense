@@ -1,6 +1,14 @@
 import { prisma } from "@draft-sense/data-access";
 import { NextRequest } from "next/server";
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+vi.mock("@clerk/nextjs/server", () => ({
+  auth: async () => ({ userId: "user_integration" }),
+  currentUser: async () => ({
+    primaryEmailAddress: { emailAddress: "integration@draftsense.test" },
+    firstName: "Integration",
+    lastName: "User",
+  }),
+}));
 import { POST } from "../app/api/v1/draft-sessions/[id]/picks/route";
 import { clearDatabase, createDraftFixture } from "./database";
 
@@ -25,7 +33,6 @@ describe("draft pick API contracts", () => {
     const { session, firstPlayer } = await createDraftFixture();
     const response = await postPick(session.id, {
       playerId: firstPlayer.id,
-      teamSlot: 1,
       expectedVersion: 0,
     });
 
@@ -43,7 +50,6 @@ describe("draft pick API contracts", () => {
     const { session, firstPlayer } = await createDraftFixture();
     const response = await postPick(session.id, {
       playerId: firstPlayer.id,
-      teamSlot: 1,
       expectedVersion: 3,
     });
 
@@ -53,7 +59,7 @@ describe("draft pick API contracts", () => {
 
   it("replays an idempotent pick without a duplicate pick or outbox event", async () => {
     const { session, firstPlayer } = await createDraftFixture();
-    const input = { playerId: firstPlayer.id, teamSlot: 1, expectedVersion: 0 };
+    const input = { playerId: firstPlayer.id, expectedVersion: 0 };
     const first = await postPick(session.id, input, "pick-001");
     const replay = await postPick(session.id, input, "pick-001");
 

@@ -1,6 +1,12 @@
 import { DraftDomainError } from "@draft-sense/draft-engine";
 import { NextResponse } from "next/server";
+import { AuthorizationError } from "./auth";
 export function apiError(error: unknown) {
+  if (error instanceof AuthorizationError)
+    return NextResponse.json(
+      { error: { code: error.code, message: error.message } },
+      { status: error.code === "UNAUTHENTICATED" ? 401 : 403 },
+    );
   if (error instanceof DraftDomainError)
     return NextResponse.json(
       { error: { code: error.code, message: error.message } },

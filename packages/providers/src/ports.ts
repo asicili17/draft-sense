@@ -1,4 +1,4 @@
-export type ProviderName = "sleeper" | "mysportsfeeds" | "fantasy-football-calculator";
+export type ProviderName = "sleeper" | "fantasypros" | "fantasy-football-calculator";
 export type ProviderErrorCode =
   "UNAVAILABLE" | "RATE_LIMITED" | "INVALID_RESPONSE" | "AUTHENTICATION_FAILED";
 export class ProviderError extends Error {

@@ -2,6 +2,7 @@ import { prisma } from "@draft-sense/data-access";
 
 export async function clearDatabase() {
   await prisma.outboxEvent.deleteMany();
+  await prisma.userDraftTeamSelection.deleteMany();
   await prisma.simulationRun.deleteMany();
   await prisma.recommendationSnapshot.deleteMany();
   await prisma.draftPick.deleteMany();
@@ -19,7 +20,14 @@ export async function clearDatabase() {
 
 export async function createDraftFixture() {
   const owner = await prisma.user.create({
-    data: { email: "integration@draftsense.test", displayName: "Integration user" },
+    data: {
+      clerkUserId: "user_integration",
+      email: "integration@draftsense.test",
+      displayName: "Integration user",
+    },
+  });
+  const league = await prisma.league.create({
+    data: { ownerId: owner.id, sport: "NFL", name: "Integration league" },
   });
   const dataset = await prisma.projectionDataset.create({
     data: { sport: "NFL", source: "integration", version: "v1" },
@@ -29,6 +37,7 @@ export async function createDraftFixture() {
   });
   const session = await prisma.draftSession.create({
     data: {
+      leagueId: league.id,
       ownerId: owner.id,
       datasetId: dataset.id,
       scoringFormatId: scoringFormat.id,
@@ -50,5 +59,10 @@ export async function createDraftFixture() {
     prisma.player.create({ data: { sport: "NFL", fullName: "First Player", positions: ["QB"] } }),
     prisma.player.create({ data: { sport: "NFL", fullName: "Second Player", positions: ["RB"] } }),
   ]);
+  const selectedTeam = session.teams[0];
+  if (!selectedTeam) throw new Error("Expected the fixture to create a first draft team");
+  await prisma.userDraftTeamSelection.create({
+    data: { userId: owner.id, sessionId: session.id, teamId: selectedTeam.id },
+  });
   return { session, firstPlayer, secondPlayer };
 }

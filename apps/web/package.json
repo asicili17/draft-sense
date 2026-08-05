@@ -9,6 +9,7 @@
     "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
+    "@clerk/nextjs": "^7.6.4",
     "@draft-sense/data-access": "*",
     "@draft-sense/draft-engine": "*",
     "@draft-sense/providers": "*",

@@ -17,7 +17,7 @@ CREATE TABLE "ProjectionDataset" ("id" UUID NOT NULL, "importId" UUID, "sport" "
 CREATE TABLE "PlayerProjection" ("id" UUID NOT NULL, "datasetId" UUID NOT NULL, "playerId" UUID NOT NULL, "scoringFormatId" UUID NOT NULL, "projectedPoints" DOUBLE PRECISION NOT NULL, "adp" DOUBLE PRECISION, "metadata" JSONB, CONSTRAINT "PlayerProjection_pkey" PRIMARY KEY ("id"));
 CREATE TABLE "DraftSession" ("id" UUID NOT NULL, "leagueId" UUID, "ownerId" UUID NOT NULL, "datasetId" UUID NOT NULL, "scoringFormatId" UUID NOT NULL, "sport" "Sport" NOT NULL, "status" "DraftStatus" NOT NULL DEFAULT 'SETUP', "draftType" "DraftType" NOT NULL, "teamCount" INTEGER NOT NULL, "settings" JSONB NOT NULL, "version" INTEGER NOT NULL DEFAULT 0, CONSTRAINT "DraftSession_pkey" PRIMARY KEY ("id"));
 CREATE TABLE "DraftTeam" ("id" UUID NOT NULL, "sessionId" UUID NOT NULL, "slot" INTEGER NOT NULL, "name" TEXT NOT NULL, CONSTRAINT "DraftTeam_pkey" PRIMARY KEY ("id"));
-CREATE TABLE "DraftPick" ("id" UUID NOT NULL, "sessionId" UUID NOT NULL, "overallPick" INTEGER NOT NULL, "round" INTEGER NOT NULL, "teamId" UUID NOT NULL, "playerId" UUID NOT NULL, "source" "PickSource" NOT NULL, "idempotencyKey" TEXT, CONSTRAINT "DraftPick_pkey" PRIMARY KEY ("id"));
+CREATE TABLE "DraftPick" ("id" UUID NOT NULL, "sessionId" UUID NOT NULL, "overallPick" INTEGER NOT NULL, "round" INTEGER NOT NULL, "teamId" UUID NOT NULL, "playerId" UUID NOT NULL, "source" "PickSource" NOT NULL, CONSTRAINT "DraftPick_pkey" PRIMARY KEY ("id"));
 CREATE TABLE "RecommendationSnapshot" ("id" UUID NOT NULL, "sessionId" UUID NOT NULL, "sessionVersion" INTEGER NOT NULL, "algorithmVersion" TEXT NOT NULL, "input" JSONB NOT NULL, "result" JSONB NOT NULL, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "RecommendationSnapshot_pkey" PRIMARY KEY ("id"));
 CREATE TABLE "SimulationRun" ("id" UUID NOT NULL, "sessionId" UUID NOT NULL, "sessionVersion" INTEGER NOT NULL, "seed" TEXT NOT NULL, "trials" INTEGER NOT NULL, "result" JSONB NOT NULL, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "SimulationRun_pkey" PRIMARY KEY ("id"));
 CREATE TABLE "OutboxEvent" ("id" UUID NOT NULL, "sessionId" UUID NOT NULL, "type" TEXT NOT NULL, "payload" JSONB NOT NULL, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "processedAt" TIMESTAMP(3), CONSTRAINT "OutboxEvent_pkey" PRIMARY KEY ("id"));
@@ -33,7 +33,6 @@ CREATE UNIQUE INDEX "PlayerProjection_datasetId_playerId_scoringFormatId_key" ON
 CREATE UNIQUE INDEX "DraftTeam_sessionId_slot_key" ON "DraftTeam"("sessionId", "slot");
 CREATE UNIQUE INDEX "DraftPick_sessionId_overallPick_key" ON "DraftPick"("sessionId", "overallPick");
 CREATE UNIQUE INDEX "DraftPick_sessionId_playerId_key" ON "DraftPick"("sessionId", "playerId");
-CREATE UNIQUE INDEX "DraftPick_sessionId_idempotencyKey_key" ON "DraftPick"("sessionId", "idempotencyKey");
 CREATE INDEX "RecommendationSnapshot_sessionId_createdAt_idx" ON "RecommendationSnapshot"("sessionId", "createdAt");
 CREATE UNIQUE INDEX "RecommendationSnapshot_sessionId_sessionVersion_algorithmVe_key" ON "RecommendationSnapshot"("sessionId", "sessionVersion", "algorithmVersion");
 CREATE UNIQUE INDEX "SimulationRun_sessionId_sessionVersion_seed_key" ON "SimulationRun"("sessionId", "sessionVersion", "seed");

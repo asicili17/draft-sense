@@ -3,10 +3,10 @@ import { recordPick, validateRosterPick } from "@draft-sense/draft-engine";
 import type { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { requireSelectedTeam, requireSessionAccess } from "../../../../../../server/auth";
 import { apiError } from "../../../../../../server/http";
 const bodySchema = z.object({
   playerId: z.string().uuid(),
-  teamSlot: z.number().int().positive(),
   expectedVersion: z.number().int().nonnegative(),
   source: z.enum(["SLEEPER", "MANUAL"]).default("MANUAL"),
 });
@@ -14,6 +14,12 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   try {
     const id = (await context.params).id;
     const body = bodySchema.parse(await request.json());
+    const { user, session: authorizedSession } = await requireSessionAccess(id, true);
+    if (!authorizedSession)
+      return NextResponse.json(
+        { error: { code: "NOT_FOUND", message: "Draft session not found." } },
+        { status: 404 },
+      );
     const idempotencyKey = request.headers.get("idempotency-key")?.trim();
     const session = await getDraftSession(id);
     if (!session)
@@ -22,9 +28,12 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
         { status: 404 },
       );
     if (idempotencyKey) {
-      const existing = await prisma.draftPick.findFirst({ where: { sessionId: id, idempotencyKey } });
+      const existing = await prisma.draftPick.findFirst({
+        where: { sessionId: id, idempotencyKey },
+      });
       if (existing) return NextResponse.json({ data: await getDraftSession(id) });
     }
+    const team = await requireSelectedTeam(id, user.id);
     const state = recordPick(
       {
         teamCount: session.teamCount,
@@ -39,19 +48,11 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       },
       {
         overallPick: session.picks.length + 1,
-        teamSlot: body.teamSlot,
+        teamSlot: team.slot,
         playerId: body.playerId,
       },
       body.expectedVersion,
     );
-    const team = session.teams.find(
-      (candidate: { id: string; slot: number }) => candidate.slot === body.teamSlot,
-    );
-    if (!team)
-      return NextResponse.json(
-        { error: { code: "TEAM_NOT_FOUND", message: "Draft team not found." } },
-        { status: 422 },
-      );
     const player = await prisma.player.findUnique({ where: { id: body.playerId } });
     if (!player || player.sport !== "NFL")
       return NextResponse.json(
