@@ -17,13 +17,27 @@ export async function importSleeperLeague(input: {
           externalLeagueId: input.league.league.externalLeagueId,
         },
       },
-      include: { league: true },
+      include: {
+        league: {
+          include: { owner: { select: { clerkUserId: true } } },
+        },
+      },
     });
-    const league =
-      existingIntegration?.league ??
-      (await tx.league.create({
+    let league = existingIntegration?.league;
+    if (league && league.ownerId !== input.ownerId) {
+      if (league.owner.clerkUserId)
+        throw new Error("This Sleeper league is already registered to another DraftSense account.");
+      league = await tx.league.update({
+        where: { id: league.id },
+        data: { ownerId: input.ownerId },
+        include: { owner: { select: { clerkUserId: true } } },
+      });
+    }
+    if (!league)
+      league = await tx.league.create({
         data: { ownerId: input.ownerId, sport: "NFL", name: input.league.league.name },
-      }));
+        include: { owner: { select: { clerkUserId: true } } },
+      });
     await tx.leagueIntegration.upsert({
       where: {
         provider_externalLeagueId: {
@@ -106,6 +120,7 @@ export async function importSleeperLeague(input: {
       ? await tx.draftSession.update({
           where: { id: existing.id },
           data: {
+            ownerId: input.ownerId,
             datasetId: dataset.id,
             scoringFormatId: scoring.id,
             teamCount,
