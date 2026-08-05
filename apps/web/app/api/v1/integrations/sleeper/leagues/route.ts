@@ -33,7 +33,13 @@ export async function GET(request: NextRequest) {
         { status: 503 },
       );
     if (error instanceof Error && error.name !== "AuthorizationError") {
-      console.error("Failed to look up Sleeper leagues.", error);
+      let databaseHost = "not configured";
+      try {
+        databaseHost = new URL(process.env.DATABASE_URL ?? "").host || databaseHost;
+      } catch {
+        databaseHost = "invalid URL";
+      }
+      console.error("Failed to look up Sleeper leagues.", { databaseHost, error });
       return NextResponse.json(
         {
           error: {
