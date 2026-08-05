@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
+import { useAuth } from "@clerk/nextjs";
 
 type League = { externalLeagueId: string; name: string; draftId?: string };
 type ImportPreview = {
@@ -22,8 +23,15 @@ type Session = {
   picks: { overallPick: number; player: { fullName: string }; team: { name: string } }[];
   settings?: { source?: { leagueId?: string; draftId?: string } };
 };
+type SavedDraftRoom = {
+  sessionId: string;
+  leagueName: string;
+  status: string;
+  selectedTeam: { id: string; name: string; slot: number };
+};
 
 export function DraftAssistant() {
+  const { isSignedIn } = useAuth();
   const [username, setUsername] = useState("");
   const [leagues, setLeagues] = useState<League[]>([]);
   const [session, setSession] = useState<Session | null>(null);
@@ -33,6 +41,7 @@ export function DraftAssistant() {
   const [explanation, setExplanation] = useState("");
   const [source, setSource] = useState<{ leagueId: string; draftId: string } | null>(null);
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
+  const [savedRooms, setSavedRooms] = useState<SavedDraftRoom[]>([]);
 
   const refresh = useCallback(async (id: string) => {
     const [sessionResponse, recommendationResponse] = await Promise.all([
@@ -41,12 +50,28 @@ export function DraftAssistant() {
     ]);
     const sessionPayload = await sessionResponse.json();
     const recommendationPayload = await recommendationResponse.json();
-    if (sessionResponse.ok) setSession(sessionPayload.data);
+    if (sessionResponse.ok) {
+      setSession(sessionPayload.data);
+      const importedSource = sessionPayload.data.settings?.source;
+      if (importedSource?.leagueId && importedSource?.draftId) setSource(importedSource);
+    }
     if (recommendationResponse.ok) {
       setRecommendations(recommendationPayload.data.recommendations);
       setSnapshotId(recommendationPayload.data.snapshotId);
     }
   }, []);
+
+  const loadSavedRooms = useCallback(async () => {
+    const response = await fetch("/api/v1/draft-sessions", { cache: "no-store" });
+    if (!response.ok) return setSavedRooms([]);
+    const payload = await response.json();
+    setSavedRooms(payload.data);
+  }, []);
+
+  useEffect(() => {
+    if (!isSignedIn) return setSavedRooms([]);
+    void loadSavedRooms();
+  }, [isSignedIn, loadSavedRooms]);
 
   useEffect(() => {
     if (!session) return;
@@ -105,7 +130,14 @@ export function DraftAssistant() {
     if (importedSource?.leagueId && importedSource?.draftId) setSource(importedSource);
     setImportPreview(null);
     await refresh(payload.data.id);
+    await loadSavedRooms();
     setMessage("Draft room synchronized. The board refreshes every 10 seconds.");
+  };
+
+  const openSavedRoom = async (savedRoom: SavedDraftRoom) => {
+    setMessage(`Opening ${savedRoom.leagueName}…`);
+    await refresh(savedRoom.sessionId);
+    setMessage(`${savedRoom.leagueName} is open.`);
   };
   const importLeague = async (league: League) => {
     if (!league.draftId) return setMessage("Sleeper has not created a draft for this league yet.");
@@ -176,6 +208,16 @@ export function DraftAssistant() {
   };
   return (
     <section className="assistant">
+      {isSignedIn && savedRooms.length > 0 && (
+        <section className="saved-draft-rooms" aria-label="Your draft rooms">
+          <h2>Your draft rooms</h2>
+          {savedRooms.map((savedRoom) => (
+            <button key={savedRoom.sessionId} onClick={() => void openSavedRoom(savedRoom)}>
+              Open {savedRoom.leagueName} — {savedRoom.selectedTeam.name} (slot {savedRoom.selectedTeam.slot})
+            </button>
+          ))}
+        </section>
+      )}
       <label>
         Sleeper username
         <input
