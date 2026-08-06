@@ -74,7 +74,7 @@ export interface AdpImport {
 export interface LeaguePlatformProvider {
   findLeagues(input: { username: string; season: number }): Promise<readonly ExternalLeague[]>;
   getLeagueSnapshot(input: { leagueId: string }): Promise<LeagueSnapshot>;
-  getDraftSnapshot(input: { draftId: string }): Promise<DraftSnapshot>;
+  getDraftSnapshot(input: { draftId: string; leagueId?: string }): Promise<DraftSnapshot>;
 }
 export interface ProjectionProvider {
   getProjections(input: ProjectionRequest): Promise<ProjectionImport>;

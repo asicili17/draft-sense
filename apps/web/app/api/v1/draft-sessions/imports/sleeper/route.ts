@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     const sleeper = buildAppContainer().sleeper;
     const [league, draft] = await Promise.all([
       sleeper.getLeagueSnapshot({ leagueId: body.leagueId }),
-      sleeper.getDraftSnapshot({ draftId: body.draftId }),
+      sleeper.getDraftSnapshot({ draftId: body.draftId, leagueId: body.leagueId }),
     ]);
     if (body.preview)
       return NextResponse.json({

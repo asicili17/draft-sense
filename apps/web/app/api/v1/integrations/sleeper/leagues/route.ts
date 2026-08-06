@@ -2,25 +2,34 @@ import { NextRequest, NextResponse } from "next/server";
 import { ProviderError } from "@draft-sense/providers";
 import { buildAppContainer } from "../../../../../../server/container";
 import { requireUser } from "../../../../../../server/auth";
+import { prisma } from "@draft-sense/data-access";
 import { apiError } from "../../../../../../server/http";
 export async function GET(request: NextRequest) {
   try {
-    await requireUser();
-    const username = request.nextUrl.searchParams.get("username")?.trim();
+    const user = await requireUser();
+    const connection = await prisma.userPlatformAccount.findUnique({
+      where: { userId_provider: { userId: user.id, provider: "sleeper" } },
+    });
     const season = Number(request.nextUrl.searchParams.get("season") ?? new Date().getFullYear());
-    if (!username)
+    if (!connection)
       return NextResponse.json(
         {
           error: {
-            code: "VALIDATION_ERROR",
-            message: "A Sleeper username is required.",
+            code: "CONNECTION_REQUIRED",
+            message: "Connect a Sleeper account to load leagues.",
           },
         },
         { status: 400 },
       );
-    return NextResponse.json({
-      data: await buildAppContainer().sleeper.findLeagues({ username, season }),
+    const leagues = await buildAppContainer().sleeper.findLeagues({
+      username: connection.username,
+      season,
     });
+    await prisma.userPlatformAccount.update({
+      where: { id: connection.id },
+      data: { lastSyncedAt: new Date() },
+    });
+    return NextResponse.json({ data: leagues });
   } catch (error) {
     if (error instanceof ProviderError)
       return NextResponse.json(

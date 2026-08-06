@@ -48,6 +48,22 @@ model User {
   leagues League[] @relation("LeagueOwner")
   sessions DraftSession[] @relation("SessionOwner")
   teamSelections UserDraftTeamSelection[]
+  platformAccounts UserPlatformAccount[]
+}
+model UserPlatformAccount {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  provider String
+  externalUserId String
+  username String
+  metadata Json?
+  lastSyncedAt DateTime?
+  connectedAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([userId, provider])
+  @@unique([provider, externalUserId])
+  @@index([provider, externalUserId])
 }
 model League {
   id String @id @default(uuid()) @db.Uuid

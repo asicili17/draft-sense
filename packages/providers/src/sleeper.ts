@@ -8,6 +8,22 @@ import {
 } from "./ports";
 export class SleeperLeagueProvider implements LeaguePlatformProvider {
   constructor(private readonly baseUrl = "https://api.sleeper.app/v1") {}
+  async getUser({ username }: { username: string }) {
+    const user = (await getJson(`${this.baseUrl}/user/${encodeURIComponent(username)}`)) as {
+      user_id?: string;
+      username?: string;
+      display_name?: string;
+      avatar?: string;
+    };
+    if (!user.user_id)
+      throw new ProviderError("INVALID_RESPONSE", "Sleeper user response did not include an ID.");
+    return {
+      externalUserId: user.user_id,
+      username: user.username ?? username,
+      displayName: user.display_name,
+      avatar: user.avatar,
+    };
+  }
   async findLeagues({
     username,
     season,
@@ -15,13 +31,9 @@ export class SleeperLeagueProvider implements LeaguePlatformProvider {
     username: string;
     season: number;
   }): Promise<readonly ExternalLeague[]> {
-    const user = (await getJson(`${this.baseUrl}/user/${encodeURIComponent(username)}`)) as {
-      user_id?: string;
-    };
-    if (!user.user_id)
-      throw new ProviderError("INVALID_RESPONSE", "Sleeper user response did not include an ID.");
+    const user = await this.getUser({ username });
     const data = (await getJson(
-      `${this.baseUrl}/user/${user.user_id}/leagues/nfl/${season}`,
+      `${this.baseUrl}/user/${user.externalUserId}/leagues/nfl/${season}`,
     )) as Array<{ league_id?: string; name?: string; draft_id?: string }>;
     if (!Array.isArray(data))
       throw new ProviderError("INVALID_RESPONSE", "Sleeper leagues response was not an array.");
@@ -62,8 +74,14 @@ export class SleeperLeagueProvider implements LeaguePlatformProvider {
       rosterPositions: data.roster_positions ?? [],
     };
   }
-  async getDraftSnapshot({ draftId }: { draftId: string }): Promise<DraftSnapshot> {
-    const [draft, picks] = await Promise.all([
+  async getDraftSnapshot({
+    draftId,
+    leagueId,
+  }: {
+    draftId: string;
+    leagueId?: string;
+  }): Promise<DraftSnapshot> {
+    const [draft, picks, leagueUsers] = await Promise.all([
       getJson(`${this.baseUrl}/draft/${encodeURIComponent(draftId)}`) as Promise<{
         status?: string;
         draft_order?: Record<string, number>;
@@ -72,15 +90,27 @@ export class SleeperLeagueProvider implements LeaguePlatformProvider {
       getJson(`${this.baseUrl}/draft/${encodeURIComponent(draftId)}/picks`) as Promise<
         Array<{ pick_no?: number; player_id?: string; roster_id?: number }>
       >,
+      leagueId
+        ? (getJson(`${this.baseUrl}/league/${encodeURIComponent(leagueId)}/users`) as Promise<
+            Array<{ user_id?: string; display_name?: string; metadata?: { team_name?: string } }>
+          >)
+        : Promise.resolve([]),
     ]);
     if (!Array.isArray(picks))
       throw new ProviderError("INVALID_RESPONSE", "Sleeper picks response was not an array.");
+    const teamNamesBySlot = new Map(
+      leagueUsers.flatMap((user) => {
+        const slot = user.user_id ? draft.draft_order?.[user.user_id] : undefined;
+        const name = user.metadata?.team_name || user.display_name;
+        return slot && name ? [[slot, name] as const] : [];
+      }),
+    );
     const teams = Object.entries(draft.slot_to_roster_id ?? {}).flatMap(([slot, rosterId]) =>
       Number.isInteger(Number(slot))
         ? [
             {
               slot: Number(slot),
-              name: `Team ${slot}`,
+              name: teamNamesBySlot.get(Number(slot)) ?? `Team ${slot}`,
               externalRosterId: String(rosterId),
             },
           ]

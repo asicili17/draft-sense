@@ -1,13 +1,14 @@
 "use client";
+
+import * as Accordion from "@radix-ui/react-accordion";
+import * as Dialog from "@radix-ui/react-dialog";
+import { UserButton } from "@clerk/nextjs";
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { useAuth } from "@clerk/nextjs";
 
 type League = { externalLeagueId: string; name: string; draftId?: string };
-type ImportPreview = {
-  league: League;
-  teams: { slot: number; name: string }[];
-  selectedTeamSlot: number;
-};
+type DraftTeam = { slot: number; name: string };
+type ImportPreview = { league: League; teams: DraftTeam[]; selectedTeamSlot: number };
 type Recommendation = {
   playerId: string;
   name: string;
@@ -31,9 +32,10 @@ type SavedDraftRoom = {
 };
 
 export function DraftAssistant() {
-  const { isSignedIn } = useAuth();
   const [username, setUsername] = useState("");
   const [leagues, setLeagues] = useState<League[]>([]);
+  const [leagueTeams, setLeagueTeams] = useState<Record<string, DraftTeam[]>>({});
+  const [loadingLeagueId, setLoadingLeagueId] = useState<string | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [snapshotId, setSnapshotId] = useState("");
@@ -68,10 +70,45 @@ export function DraftAssistant() {
     setSavedRooms(payload.data);
   }, []);
 
+  const findLeagues = useCallback(async () => {
+    setMessage("Loading your Sleeper leagues…");
+    const response = await fetch("/api/v1/integrations/sleeper/leagues", { cache: "no-store" });
+    const payload = await response.json();
+    if (!response.ok) return setMessage(payload.error.message);
+    setLeagues(payload.data);
+    setMessage(
+      payload.data.length ? "Choose a league to inspect its draft order." : "No NFL leagues found.",
+    );
+  }, []);
+
+  const connectSleeper = async () => {
+    const normalizedUsername = username.trim();
+    if (!normalizedUsername) return;
+    setMessage("Connecting your Sleeper account…");
+    const response = await fetch("/api/v1/integrations/sleeper/connection", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ username: normalizedUsername }),
+    });
+    const payload = await response.json();
+    if (!response.ok) return setMessage(payload.error.message);
+    setUsername(payload.data.username);
+    await findLeagues();
+  };
+
   useEffect(() => {
-    if (!isSignedIn) return setSavedRooms([]);
     void loadSavedRooms();
-  }, [isSignedIn, loadSavedRooms]);
+    void (async () => {
+      const response = await fetch("/api/v1/integrations/sleeper/connection", {
+        cache: "no-store",
+      });
+      if (response.status === 404) return;
+      const payload = await response.json();
+      if (!response.ok) return setMessage(payload.error.message);
+      setUsername(payload.data.username);
+      await findLeagues();
+    })();
+  }, [findLeagues, loadSavedRooms]);
 
   useEffect(() => {
     if (!session) return;
@@ -79,21 +116,27 @@ export function DraftAssistant() {
     return () => window.clearInterval(timer);
   }, [refresh, session]);
 
-  const findLeagues = async () => {
-    setMessage("Looking up your Sleeper leagues…");
-    const response = await fetch(
-      `/api/v1/integrations/sleeper/leagues?username=${encodeURIComponent(username)}`,
-    );
+  const loadLeagueTeams = async (league: League) => {
+    if (!league.draftId || leagueTeams[league.externalLeagueId]) return;
+    setLoadingLeagueId(league.externalLeagueId);
+    const response = await fetch("/api/v1/draft-sessions/imports/sleeper", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        leagueId: league.externalLeagueId,
+        draftId: league.draftId,
+        preview: true,
+      }),
+    });
     const payload = await response.json();
+    setLoadingLeagueId(null);
     if (!response.ok) return setMessage(payload.error.message);
-    setLeagues(payload.data);
-    setMessage(
-      payload.data.length ? "Choose a league to create its draft room." : "No NFL leagues found.",
-    );
+    setLeagueTeams((current) => ({ ...current, [league.externalLeagueId]: payload.data.teams }));
   };
-  const previewLeagueImport = async (league: League) => {
+
+  const openLeague = async (league: League) => {
     if (!league.draftId) return setMessage("Sleeper has not created a draft for this league yet.");
-    setMessage("Loading league teams...");
+    setMessage("Loading draft room setup…");
     const response = await fetch("/api/v1/draft-sessions/imports/sleeper", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -105,15 +148,16 @@ export function DraftAssistant() {
     });
     const payload = await response.json();
     if (!response.ok) return setMessage(payload.error.message);
-    const teams = payload.data.teams as { slot: number; name: string }[];
+    const teams = payload.data.teams as DraftTeam[];
     const firstTeam = teams[0];
     if (!firstTeam) return setMessage("Sleeper did not return any draft teams for this league.");
+    setLeagueTeams((current) => ({ ...current, [league.externalLeagueId]: teams }));
     setImportPreview({ league, teams, selectedTeamSlot: firstTeam.slot });
-    setMessage("Choose your team before creating this private draft room.");
   };
+
   const confirmLeagueImport = async () => {
     if (!importPreview?.league.draftId) return;
-    setMessage("Creating your draft room...");
+    setMessage("Creating your draft room…");
     const response = await fetch("/api/v1/draft-sessions/imports/sleeper", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -131,30 +175,9 @@ export function DraftAssistant() {
     setImportPreview(null);
     await refresh(payload.data.id);
     await loadSavedRooms();
-    setMessage("Draft room synchronized. The board refreshes every 10 seconds.");
+    setMessage("Draft room is open and syncs with Sleeper every 10 seconds.");
   };
 
-  const openSavedRoom = async (savedRoom: SavedDraftRoom) => {
-    setMessage(`Opening ${savedRoom.leagueName}…`);
-    await refresh(savedRoom.sessionId);
-    setMessage(`${savedRoom.leagueName} is open.`);
-  };
-  const importLeague = async (league: League) => {
-    if (!league.draftId) return setMessage("Sleeper has not created a draft for this league yet.");
-    setMessage("Creating your draft room…");
-    const response = await fetch("/api/v1/draft-sessions/imports/sleeper", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ leagueId: league.externalLeagueId, draftId: league.draftId }),
-    });
-    const payload = await response.json();
-    if (!response.ok) return setMessage(payload.error.message);
-    setSession(payload.data);
-    const importedSource = payload.data.settings?.source;
-    if (importedSource?.leagueId && importedSource?.draftId) setSource(importedSource);
-    await refresh(payload.data.id);
-    setMessage("Draft room synchronized. The board refreshes every 10 seconds.");
-  };
   const refreshFromSleeper = async () => {
     const selectedTeamSlot = session?.teams.find(
       (team) => team.id === session.selectedTeamId,
@@ -170,6 +193,7 @@ export function DraftAssistant() {
     await refresh(payload.data.id);
     setMessage("Imported the latest Sleeper snapshot.");
   };
+
   const recordPick = async (playerId: string) => {
     if (!session) return;
     const response = await fetch(`/api/v1/draft-sessions/${session.id}/picks`, {
@@ -181,6 +205,7 @@ export function DraftAssistant() {
     if (!response.ok) return setMessage(payload.error.message);
     await refresh(session.id);
   };
+
   const selectTeam = async (selectedTeamId: string) => {
     if (!session) return;
     const response = await fetch(`/api/v1/draft-sessions/${session.id}`, {
@@ -192,6 +217,7 @@ export function DraftAssistant() {
     if (!response.ok) return setMessage(payload.error.message);
     await refresh(session.id);
   };
+
   const explain = async (playerId: string) => {
     if (!session || !snapshotId) return;
     const response = await fetch(
@@ -206,119 +232,263 @@ export function DraftAssistant() {
     if (!response.ok) return setMessage(payload.error.message);
     setExplanation(`${payload.data.summary} ${payload.data.uncertainty}`);
   };
+
   return (
-    <section className="assistant">
-      {isSignedIn && savedRooms.length > 0 && (
-        <section className="saved-draft-rooms" aria-label="Your draft rooms">
-          <h2>Your draft rooms</h2>
-          {savedRooms.map((savedRoom) => (
-            <button key={savedRoom.sessionId} onClick={() => void openSavedRoom(savedRoom)}>
-              Open {savedRoom.leagueName} — {savedRoom.selectedTeam.name} (slot {savedRoom.selectedTeam.slot})
-            </button>
-          ))}
-        </section>
-      )}
-      <label>
-        Sleeper username
-        <input
-          value={username}
-          onChange={(event) => setUsername(event.target.value)}
-          placeholder="your-sleeper-name"
-        />
-      </label>
-      <button onClick={findLeagues} disabled={!username}>
-        Find leagues
-      </button>
-      <p aria-live="polite">{message}</p>
-      {leagues.map((league) => (
-        <button
-          className="league"
-          key={league.externalLeagueId}
-          onClick={() => void previewLeagueImport(league)}
-        >
-          {league.name}
-        </button>
-      ))}
-      {importPreview && (
-        <section className="team-preview" aria-label="Choose your draft team">
-          <h2>{importPreview.league.name}</h2>
-          <label>
-            Which team is yours?
-            <select
-              value={importPreview.selectedTeamSlot}
-              onChange={(event) =>
-                setImportPreview({ ...importPreview, selectedTeamSlot: Number(event.target.value) })
-              }
-            >
-              {importPreview.teams.map((team) => (
-                <option key={team.slot} value={team.slot}>
-                  {team.name} (slot {team.slot})
-                </option>
-              ))}
-            </select>
-          </label>
-          <div>
-            <button onClick={() => void confirmLeagueImport()}>Create private draft room</button>
-            <button className="secondary" onClick={() => setImportPreview(null)}>
-              Cancel
-            </button>
+    <main className="workspace">
+      <header className="topbar">
+        <Link className="brand" href="/" aria-label="DraftSense home">
+          DraftSense
+        </Link>
+        <div className="topbar-actions">
+          <span className="status-dot" /> {username ? "Sleeper connected" : "Connect Sleeper"}{" "}
+          <UserButton />
+        </div>
+      </header>
+      <div className="workspace-grid">
+        <aside className="league-panel" aria-label="Your leagues">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Workspace</p>
+              <h1>Your leagues</h1>
+            </div>
           </div>
-        </section>
-      )}
-      {session && (
-        <div className="draft-room">
-          <h2>Live draft board</h2>
-          <p>
-            Version {session.version} · {session.teams.length} teams
+          <form
+            className="connect-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void connectSleeper();
+            }}
+          >
+            <label htmlFor="sleeper-username">Sleeper username</label>
+            <div>
+              <input
+                id="sleeper-username"
+                value={username}
+                onChange={(event) => setUsername(event.target.value)}
+                placeholder="your-sleeper-name"
+              />
+              <button type="submit" disabled={!username.trim()}>
+                {leagues.length ? "Reconnect" : "Connect"}
+              </button>
+            </div>
+          </form>
+          <p className="message" aria-live="polite">
+            {message}
           </p>
-          <label>
-            My draft team
-            <select
-              value={session.selectedTeamId ?? ""}
-              onChange={(event) => void selectTeam(event.target.value)}
-            >
-              <option value="" disabled>
-                Select your team
-              </option>
-              {session.teams.map((team) => (
-                <option key={team.id} value={team.id}>
-                  {team.name} (slot {team.slot})
-                </option>
+          {leagues.length > 0 && (
+            <Accordion.Root className="league-list" type="multiple">
+              {leagues.map((league) => {
+                const teams = leagueTeams[league.externalLeagueId];
+                const isLoading = loadingLeagueId === league.externalLeagueId;
+                return (
+                  <Accordion.Item
+                    className="league-item"
+                    value={league.externalLeagueId}
+                    key={league.externalLeagueId}
+                  >
+                    <div className="league-row">
+                      <Accordion.Trigger
+                        className="league-trigger"
+                        onClick={() => void loadLeagueTeams(league)}
+                      >
+                        <span className="chevron" aria-hidden="true">
+                          ⌄
+                        </span>
+                        <span>
+                          <strong>{league.name}</strong>
+                          <small>{league.draftId ? "Draft available" : "No draft yet"}</small>
+                        </span>
+                      </Accordion.Trigger>
+                      <button
+                        className="open-room"
+                        type="button"
+                        onClick={() => void openLeague(league)}
+                        disabled={!league.draftId}
+                      >
+                        Open room
+                      </button>
+                    </div>
+                    <Accordion.Content className="league-content">
+                      {!league.draftId ? (
+                        <p>Sleeper has not published this league’s draft yet.</p>
+                      ) : isLoading ? (
+                        <p>Loading draft order…</p>
+                      ) : teams ? (
+                        <ol>
+                          {teams.map((team) => (
+                            <li key={team.slot}>
+                              <span>{team.slot}</span>
+                              {team.name}
+                            </li>
+                          ))}
+                        </ol>
+                      ) : (
+                        <p>Expand to load the draft order.</p>
+                      )}
+                    </Accordion.Content>
+                  </Accordion.Item>
+                );
+              })}
+            </Accordion.Root>
+          )}
+          {!leagues.length && !message && (
+            <p className="empty-state">
+              Enter your Sleeper username to bring your leagues into this workspace.
+            </p>
+          )}
+          {savedRooms.length > 0 && (
+            <section className="saved-rooms">
+              <p className="eyebrow">Recent rooms</p>
+              {savedRooms.map((room) => (
+                <button
+                  type="button"
+                  key={room.sessionId}
+                  onClick={() => void refresh(room.sessionId)}
+                >
+                  <span>{room.leagueName}</span>
+                  <small>{room.selectedTeam.name}</small>
+                </button>
               ))}
-            </select>
-          </label>
-          <ol>
-            {session.picks.map((pick) => (
-              <li key={pick.overallPick}>
-                {pick.overallPick}. {pick.player.fullName} — {pick.team.name}
-              </li>
-            ))}
-          </ol>
-          <button onClick={refreshFromSleeper} disabled={!source}>
-            Refresh from Sleeper
-          </button>
-          <h3>Recommendations</h3>
-          {recommendations.slice(0, 5).map((item) => (
-            <article className="recommendation" key={item.playerId}>
-              <strong>{item.name}</strong>
-              <span>
-                {" "}
-                Score {item.score} · confidence {Math.round(item.confidence * 100)}%
-              </span>
-              <small>
-                VORP {item.factors.vorp.toFixed(1)} · roster fit {item.factors.rosterFit.toFixed(2)}
-              </small>
-              <div>
-                <button onClick={() => recordPick(item.playerId)}>Record as my pick</button>
-                <button className="secondary" onClick={() => explain(item.playerId)}>
-                  Why?
+            </section>
+          )}
+        </aside>
+        <section className="content-panel" aria-label="Draft room">
+          {session ? (
+            <div className="draft-room">
+              <div className="room-header">
+                <div>
+                  <p className="eyebrow">Live draft room</p>
+                  <h2>
+                    {session.teams.length} teams · board v{session.version}
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => void refreshFromSleeper()}
+                  disabled={!source}
+                >
+                  Refresh
                 </button>
               </div>
-            </article>
-          ))}
-          {explanation && <p className="explanation">{explanation}</p>}
-        </div>
-      )}
-    </section>
+              <label className="team-select">
+                My draft team
+                <select
+                  value={session.selectedTeamId ?? ""}
+                  onChange={(event) => void selectTeam(event.target.value)}
+                >
+                  <option value="" disabled>
+                    Select your team
+                  </option>
+                  {session.teams.map((team) => (
+                    <option key={team.id} value={team.id}>
+                      {team.name} (slot {team.slot})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="room-columns">
+                <section className="draft-board">
+                  <h3>Draft board</h3>
+                  {session.picks.length ? (
+                    <ol>
+                      {session.picks.map((pick) => (
+                        <li key={pick.overallPick}>
+                          <span>{pick.overallPick}</span>
+                          <strong>{pick.player.fullName}</strong>
+                          <small>{pick.team.name}</small>
+                        </li>
+                      ))}
+                    </ol>
+                  ) : (
+                    <p>No picks have been recorded.</p>
+                  )}
+                </section>
+                <section className="recommendations">
+                  <h3>On the clock</h3>
+                  {recommendations.slice(0, 5).map((item) => (
+                    <article key={item.playerId}>
+                      <strong>{item.name}</strong>
+                      <span>
+                        Score {item.score} · {Math.round(item.confidence * 100)}% confidence
+                      </span>
+                      <small>
+                        VORP {item.factors.vorp.toFixed(1)} · roster fit{" "}
+                        {item.factors.rosterFit.toFixed(2)}
+                      </small>
+                      <div>
+                        <button type="button" onClick={() => void recordPick(item.playerId)}>
+                          Record pick
+                        </button>
+                        <button
+                          type="button"
+                          className="secondary"
+                          onClick={() => void explain(item.playerId)}
+                        >
+                          Why?
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                  {explanation && <p className="explanation">{explanation}</p>}
+                </section>
+              </div>
+            </div>
+          ) : (
+            <div className="room-empty">
+              <span className="draft-icon">⌁</span>
+              <h2>Choose a league to open its draft room</h2>
+              <p>
+                Expand a league to review its Sleeper draft order, then open the room when you’re
+                ready.
+              </p>
+            </div>
+          )}
+        </section>
+      </div>
+      <Dialog.Root
+        open={Boolean(importPreview)}
+        onOpenChange={(open) => !open && setImportPreview(null)}
+      >
+        <Dialog.Portal>
+          <Dialog.Overlay className="dialog-overlay" />
+          <Dialog.Content className="team-dialog">
+            <Dialog.Title>Open {importPreview?.league.name}</Dialog.Title>
+            <Dialog.Description>
+              Choose the team you manage. This can be changed in the draft room later.
+            </Dialog.Description>
+            <label>
+              My team
+              <select
+                value={importPreview?.selectedTeamSlot ?? ""}
+                onChange={(event) =>
+                  importPreview &&
+                  setImportPreview({
+                    ...importPreview,
+                    selectedTeamSlot: Number(event.target.value),
+                  })
+                }
+              >
+                {importPreview?.teams.map((team) => (
+                  <option key={team.slot} value={team.slot}>
+                    {team.name} (slot {team.slot})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="dialog-actions">
+              <Dialog.Close asChild>
+                <button type="button" className="secondary">
+                  Cancel
+                </button>
+              </Dialog.Close>
+              <button type="button" onClick={() => void confirmLeagueImport()}>
+                Open draft room
+              </button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+    </main>
   );
 }
