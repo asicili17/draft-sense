@@ -14,6 +14,9 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
         { error: { code: "NOT_FOUND", message: "Draft session not found." } },
         { status: 404 },
       );
+    await import("@draft-sense/data-access").then(({ prisma }) =>
+      prisma.draftSession.update({ where: { id }, data: { lastViewedAt: new Date() } }),
+    );
     const selectedTeam = await import("@draft-sense/data-access").then(({ prisma }) =>
       prisma.userDraftTeamSelection.findUnique({
         where: { userId_sessionId: { userId: user.id, sessionId: id } },

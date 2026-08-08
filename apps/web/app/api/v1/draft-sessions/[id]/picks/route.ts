@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireSelectedTeam, requireSessionAccess } from "../../../../../../server/auth";
 import { apiError } from "../../../../../../server/http";
+import { publishPendingOutbox } from "../../../../../../server/jobs/outbox-publisher";
 const bodySchema = z.object({
   playerId: z.string().uuid(),
   expectedVersion: z.number().int().nonnegative(),
@@ -90,10 +91,11 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
         data: {
           sessionId: id,
           type: "draft.pick.recorded",
-          payload: { overallPick: state.picks.length, playerId: body.playerId },
+          payload: { overallPick: state.picks.length, playerId: body.playerId, sessionVersion: state.version },
         },
       });
     });
+    await publishPendingOutbox().catch(() => undefined);
     return NextResponse.json({ data: await getDraftSession(id) }, { status: 201 });
   } catch (error) {
     return apiError(error);

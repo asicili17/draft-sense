@@ -17,3 +17,11 @@ DraftSense uses Clerk for identity and sessions. Each imported league and draft 
 3. Apply the committed database migrations with `npm run db:migrate:deploy` before starting the app.
 
 The application never accepts an owner, user, or team slot from a client as proof of authorization. Server routes verify the Clerk session, map it to the local user, verify `DraftSession.ownerId`, and use the active `UserDraftTeamSelection` for roster context.
+
+## Background jobs and live Sleeper sync
+
+DraftSense is read-only with respect to Sleeper: users make every pick in Sleeper, and DraftSense reconciles the public draft snapshot before refreshing advice. Configure `QSTASH_TOKEN`, `QSTASH_CURRENT_SIGNING_KEY`, `QSTASH_NEXT_SIGNING_KEY`, and the deployed `APP_URL` to enable the durable outbox publisher and cryptographically protected job endpoint. While an imported draft is live, its refresh job schedules the next Sleeper read after `LIVE_DRAFT_POLL_SECONDS` (10 seconds by default). The Vercel cron remains a recovery publisher for outbox rows that could not be sent immediately.
+
+Apply the new migration before enabling jobs: `npm run db:migrate:deploy`. Configure both QStash signing keys so key rotation does not interrupt background processing.
+
+Operations can inspect the protected `GET /api/jobs/health` endpoint with the cron bearer secret. It reports ready outbox work, active leases, and jobs moved to the durable dead-letter state after eight failed publication attempts. Structured job events are emitted to the deployment logs for alerting.

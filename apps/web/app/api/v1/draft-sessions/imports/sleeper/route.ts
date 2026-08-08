@@ -4,6 +4,8 @@ import { z } from "zod";
 import { buildAppContainer } from "../../../../../../server/container";
 import { apiError } from "../../../../../../server/http";
 import { requireUser } from "../../../../../../server/auth";
+import { enqueueJob } from "../../../../../../server/jobs/queue";
+import { publishPendingOutbox } from "../../../../../../server/jobs/outbox-publisher";
 const baseSchema = z.object({
   leagueId: z.string().min(1),
   draftId: z.string().min(1),
@@ -34,17 +36,18 @@ export async function POST(request: NextRequest) {
             .sort((left, right) => left.slot - right.slot),
         },
       });
-    return NextResponse.json(
-      {
-        data: await importSleeperLeague({
+    const session = await importSleeperLeague({
           league,
           draft,
           ownerId: actor.id,
           selectedTeamSlot: body.selectedTeamSlot,
-        }),
-      },
-      { status: 201 },
-    );
+        });
+    if (!session) throw new Error("Imported draft session could not be loaded.");
+    // Queue the next authoritative Sleeper read. A missing queue configuration leaves the
+    // imported room usable with its manual refresh control.
+    await enqueueJob({ type: "sleeper.refresh.requested", sessionId: session.id }).catch(() => undefined);
+    await publishPendingOutbox().catch(() => undefined);
+    return NextResponse.json({ data: session }, { status: 201 });
   } catch (error) {
     return apiError(error);
   }

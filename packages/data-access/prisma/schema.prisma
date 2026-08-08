@@ -163,6 +163,7 @@ model DraftSession {
   teamCount Int
   settings Json
   version Int @default(0)
+  lastViewedAt DateTime @default(now())
   league League? @relation(fields: [leagueId], references: [id], onDelete: Restrict)
   owner User @relation("SessionOwner", fields: [ownerId], references: [id], onDelete: Restrict)
   dataset ProjectionDataset @relation(fields: [datasetId], references: [id], onDelete: Restrict)
@@ -243,6 +244,15 @@ model OutboxEvent {
   payload Json
   createdAt DateTime @default(now())
   processedAt DateTime?
+  availableAt DateTime @default(now())
+  leasedUntil DateTime?
+  leaseToken String?
+  attempts Int @default(0)
+  lastError String?
+  queueMessageId String?
+  deadLetteredAt DateTime?
   session DraftSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  @@index([processedAt, createdAt])
+  @@index([processedAt, availableAt, createdAt])
+  @@index([leasedUntil])
+  @@index([deadLetteredAt])
 }

@@ -210,6 +210,17 @@ export async function importSleeperLeague(input: {
         where: { id: session.id },
         data: { version: currentPicks.length + newImportedPicks.length },
       });
+      await tx.outboxEvent.create({
+        data: {
+          sessionId: session.id,
+          type: "draft.pick.recorded",
+          payload: {
+            source: "sleeper",
+            sessionVersion: currentPicks.length + newImportedPicks.length,
+            overallPick: newImportedPicks.at(-1)?.overallPick,
+          },
+        },
+      });
     }
     return session.id;
   });

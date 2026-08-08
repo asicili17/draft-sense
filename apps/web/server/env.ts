@@ -11,6 +11,11 @@ const schema = z.object({
     .default("https://fantasyfootballcalculator.com/api/v1"),
   OPENAI_API_KEY: z.string().min(1).optional(),
   CRON_SECRET: z.string().min(24).optional(),
+  QSTASH_TOKEN: z.string().min(1).optional(),
+  QSTASH_CURRENT_SIGNING_KEY: z.string().min(1).optional(),
+  QSTASH_NEXT_SIGNING_KEY: z.string().min(1).optional(),
+  APP_URL: z.string().url().optional(),
+  LIVE_DRAFT_POLL_SECONDS: z.coerce.number().int().min(5).max(60).default(10),
 });
 export type Environment = z.infer<typeof schema>;
 export function parseEnvironment(input: NodeJS.ProcessEnv = process.env): Environment {

@@ -194,18 +194,6 @@ export function DraftAssistant() {
     setMessage("Imported the latest Sleeper snapshot.");
   };
 
-  const recordPick = async (playerId: string) => {
-    if (!session) return;
-    const response = await fetch(`/api/v1/draft-sessions/${session.id}/picks`, {
-      method: "POST",
-      headers: { "content-type": "application/json", "idempotency-key": crypto.randomUUID() },
-      body: JSON.stringify({ playerId, expectedVersion: session.version, source: "MANUAL" }),
-    });
-    const payload = await response.json();
-    if (!response.ok) return setMessage(payload.error.message);
-    await refresh(session.id);
-  };
-
   const selectTeam = async (selectedTeamId: string) => {
     if (!session) return;
     const response = await fetch(`/api/v1/draft-sessions/${session.id}`, {
@@ -417,9 +405,6 @@ export function DraftAssistant() {
                         {item.factors.rosterFit.toFixed(2)}
                       </small>
                       <div>
-                        <button type="button" onClick={() => void recordPick(item.playerId)}>
-                          Record pick
-                        </button>
                         <button
                           type="button"
                           className="secondary"
@@ -430,6 +415,10 @@ export function DraftAssistant() {
                       </div>
                     </article>
                   ))}
+                  <p className="message">
+                    Picks are made in Sleeper. DraftSense updates recommendations after it detects the
+                    latest Sleeper draft board.
+                  </p>
                   {explanation && <p className="explanation">{explanation}</p>}
                 </section>
               </div>
