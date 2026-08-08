@@ -4,7 +4,7 @@ ALTER TABLE "OutboxEvent"
   ADD COLUMN "leaseToken" TEXT,
   ADD COLUMN "attempts" INTEGER NOT NULL DEFAULT 0,
   ADD COLUMN "lastError" TEXT,
-  ADD COLUMN "queueMessageId" TEXT;
+  ADD COLUMN "queueMessageId" TEXT,
   ADD COLUMN "deadLetteredAt" TIMESTAMP(3);
 
 CREATE INDEX "OutboxEvent_processedAt_availableAt_createdAt_idx"
