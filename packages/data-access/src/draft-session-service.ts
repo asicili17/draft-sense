@@ -160,8 +160,9 @@ export async function importSleeperLeague(input: {
       update: { teamId: selectedTeam.id },
       create: { userId: input.ownerId, sessionId: session.id, teamId: selectedTeam.id },
     });
-    // Only canonical identities can become draft picks. Unknown provider players remain visible
-    // upstream and can be corrected manually, rather than creating an invalid local player.
+    // A Sleeper draft is the source of truth for its board. If a player cannot be
+    // confidently matched to our canonical player pool, retain a Sleeper-specific
+    // player record rather than dropping that pick (which would stall future syncs).
     const teams = await tx.draftTeam.findMany({ where: { sessionId: session.id } });
     const identityRows = await tx.playerExternalIdentity.findMany({
       where: {
@@ -191,7 +192,6 @@ export async function importSleeperLeague(input: {
             position: player.positions[0],
           })),
         );
-        if (match.kind === "ambiguous") continue;
         const playerId =
           match.kind === "matched"
             ? match.playerId
@@ -233,14 +233,15 @@ export async function importSleeperLeague(input: {
         return playerId && teamId ? [{ ...pick, playerId, teamId }] : [];
       });
     const currentPicks = await tx.draftPick.findMany({ where: { sessionId: session.id } });
-    const currentOverallPick = Math.max(0, ...currentPicks.map((pick) => pick.overallPick));
-    const newImportedPicks: typeof importedPicks = [];
-    for (const pick of importedPicks) {
-      if (pick.overallPick !== currentOverallPick + newImportedPicks.length + 1) break;
-      newImportedPicks.push(pick);
-    }
+    const existingOverallPicks = new Set(currentPicks.map((pick) => pick.overallPick));
+    // Backfill every slot absent locally. The previous contiguous-only approach
+    // stopped at the first unmapped historic pick, so a single gap could leave the
+    // rest of an active Sleeper draft permanently frozen in the UI.
+    const newImportedPicks = importedPicks.filter(
+      (pick) => !existingOverallPicks.has(pick.overallPick),
+    );
     if (newImportedPicks.length > 0) {
-      await tx.draftPick.createMany({
+      const inserted = await tx.draftPick.createMany({
         data: newImportedPicks.map((pick) => ({
           sessionId: session.id,
           overallPick: pick.overallPick,
@@ -251,21 +252,24 @@ export async function importSleeperLeague(input: {
         })),
         skipDuplicates: true,
       });
-      await tx.draftSession.update({
-        where: { id: session.id },
-        data: { version: currentPicks.length + newImportedPicks.length },
-      });
-      await tx.outboxEvent.create({
-        data: {
-          sessionId: session.id,
-          type: "draft.pick.recorded",
-          payload: {
-            source: "sleeper",
-            sessionVersion: currentPicks.length + newImportedPicks.length,
-            overallPick: newImportedPicks.at(-1)?.overallPick,
+      if (inserted.count > 0) {
+        const updatedSession = await tx.draftSession.update({
+          where: { id: session.id },
+          data: { version: { increment: inserted.count } },
+          select: { version: true },
+        });
+        await tx.outboxEvent.create({
+          data: {
+            sessionId: session.id,
+            type: "draft.pick.recorded",
+            payload: {
+              source: "sleeper",
+              sessionVersion: updatedSession.version,
+              overallPick: newImportedPicks.at(-1)?.overallPick,
+            },
           },
-        },
-      });
+        });
+      }
     }
     return session.id;
   });
