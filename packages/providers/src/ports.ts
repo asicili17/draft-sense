@@ -36,6 +36,9 @@ export interface DraftSnapshot {
     overallPick: number;
     externalPlayerId: string;
     rosterId: string;
+    fullName?: string;
+    team?: string;
+    position?: string;
   }[];
   readonly retrievedAt: Date;
 }

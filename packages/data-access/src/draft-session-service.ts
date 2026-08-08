@@ -1,7 +1,7 @@
 import type { Position, Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { scoreNflProjection } from "./nfl-scoring";
-import type { DraftSnapshot, LeagueSnapshot } from "@draft-sense/providers";
+import { matchPlayer, type DraftSnapshot, type LeagueSnapshot } from "@draft-sense/providers";
 const positionSet = new Set<Position>(["QB", "RB", "WR", "TE", "K", "DST", "DL", "LB", "DB"]);
 export async function importSleeperLeague(input: {
   league: LeagueSnapshot;
@@ -172,6 +172,34 @@ export async function importSleeperLeague(input: {
     const playerByExternalId = new Map(
       identityRows.map((identity) => [identity.externalId, identity.playerId]),
     );
+    const unmatchedSleeperPicks = input.draft.picks.filter(
+      (pick) => !playerByExternalId.has(pick.externalPlayerId) && pick.fullName,
+    );
+    if (unmatchedSleeperPicks.length) {
+      const candidates = await tx.player.findMany({
+        where: { sport: "NFL" },
+        select: { id: true, fullName: true, team: true, positions: true },
+      });
+      for (const pick of unmatchedSleeperPicks) {
+        if (!pick.fullName) continue;
+        const match = matchPlayer(
+          { fullName: pick.fullName, team: pick.team, position: pick.position },
+          candidates.map((player) => ({
+            id: player.id,
+            fullName: player.fullName,
+            team: player.team ?? undefined,
+            position: player.positions[0],
+          })),
+        );
+        if (match.kind !== "matched") continue;
+        await tx.playerExternalIdentity.upsert({
+          where: { provider_externalId: { provider: "sleeper", externalId: pick.externalPlayerId } },
+          update: {},
+          create: { provider: "sleeper", externalId: pick.externalPlayerId, playerId: match.playerId },
+        });
+        playerByExternalId.set(pick.externalPlayerId, match.playerId);
+      }
+    }
     const teamByRosterId = new Map(
       input.draft.teams
         .filter((team) => team.externalRosterId)

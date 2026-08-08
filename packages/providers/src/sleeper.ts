@@ -88,7 +88,12 @@ export class SleeperLeagueProvider implements LeaguePlatformProvider {
         slot_to_roster_id?: Record<string, number>;
       }>,
       getJson(`${this.baseUrl}/draft/${encodeURIComponent(draftId)}/picks`) as Promise<
-        Array<{ pick_no?: number; player_id?: string; roster_id?: number }>
+        Array<{
+          pick_no?: number;
+          player_id?: string;
+          roster_id?: number;
+          metadata?: { first_name?: string; last_name?: string; team?: string; position?: string };
+        }>
       >,
       leagueId
         ? (getJson(`${this.baseUrl}/league/${encodeURIComponent(leagueId)}/users`) as Promise<
@@ -124,13 +129,21 @@ export class SleeperLeagueProvider implements LeaguePlatformProvider {
       retrievedAt: new Date(),
       picks: picks.flatMap((pick) =>
         pick.pick_no && pick.player_id && pick.roster_id
-          ? [
-              {
-                overallPick: pick.pick_no,
-                externalPlayerId: pick.player_id,
-                rosterId: String(pick.roster_id),
-              },
-            ]
+          ? (() => {
+              const fullName = [pick.metadata?.first_name, pick.metadata?.last_name]
+                .filter((part): part is string => Boolean(part))
+                .join(" ");
+              return [
+                {
+                  overallPick: pick.pick_no,
+                  externalPlayerId: pick.player_id,
+                  rosterId: String(pick.roster_id),
+                  ...(fullName ? { fullName } : {}),
+                  ...(pick.metadata?.team ? { team: pick.metadata.team } : {}),
+                  ...(pick.metadata?.position ? { position: pick.metadata.position } : {}),
+                },
+              ];
+            })()
           : [],
       ),
     };

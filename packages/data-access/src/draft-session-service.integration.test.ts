@@ -84,6 +84,39 @@ describe("Sleeper session import", () => {
     });
   });
 
+  it("links a Sleeper pick to an unambiguous canonical player", async () => {
+    const owner = await prisma.user.create({
+      data: { email: "matched-import@draftsense.test", displayName: "Matched import owner" },
+    });
+    await prisma.player.create({
+      data: { sport: "NFL", fullName: "Sleeper Match", team: "DET", positions: ["RB"] },
+    });
+    const session = await importSleeperLeague({
+      ...source,
+      ownerId: owner.id,
+      selectedTeamSlot: 1,
+      draft: {
+        ...source.draft,
+        picks: [
+          {
+            overallPick: 1,
+            externalPlayerId: "sleeper-match",
+            rosterId: "roster-1",
+            fullName: "Sleeper Match",
+            team: "DET",
+            position: "RB",
+          },
+        ],
+      },
+    });
+    expect(session?.picks).toHaveLength(1);
+    await expect(
+      prisma.playerExternalIdentity.findUniqueOrThrow({
+        where: { provider_externalId: { provider: "sleeper", externalId: "sleeper-match" } },
+      }),
+    ).resolves.toMatchObject({ provider: "sleeper" });
+  });
+
   it("refreshes provider state without replacing existing manual picks", async () => {
     const owner = await prisma.user.create({
       data: { email: "manual-owner@draftsense.test", displayName: "Manual owner" },
