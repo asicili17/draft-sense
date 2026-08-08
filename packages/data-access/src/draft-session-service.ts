@@ -191,13 +191,30 @@ export async function importSleeperLeague(input: {
             position: player.positions[0],
           })),
         );
-        if (match.kind !== "matched") continue;
+        if (match.kind === "ambiguous") continue;
+        const playerId =
+          match.kind === "matched"
+            ? match.playerId
+            : (
+                await tx.player.create({
+                  data: {
+                    sport: "NFL",
+                    fullName: pick.fullName,
+                    team: pick.team ?? null,
+                    positions: [
+                      pick.position && positionSet.has(pick.position as Position)
+                        ? (pick.position as Position)
+                        : "WR",
+                    ],
+                  },
+                })
+              ).id;
         await tx.playerExternalIdentity.upsert({
           where: { provider_externalId: { provider: "sleeper", externalId: pick.externalPlayerId } },
           update: {},
-          create: { provider: "sleeper", externalId: pick.externalPlayerId, playerId: match.playerId },
+          create: { provider: "sleeper", externalId: pick.externalPlayerId, playerId },
         });
-        playerByExternalId.set(pick.externalPlayerId, match.playerId);
+        playerByExternalId.set(pick.externalPlayerId, playerId);
       }
     }
     const teamByRosterId = new Map(
