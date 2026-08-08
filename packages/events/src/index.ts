@@ -13,6 +13,13 @@ export type DraftSenseJob = {
   eventId?: string;
 };
 
+/** Public, one-way notification sent to an authorized draft-room client. */
+export type DraftRealtimeEvent = {
+  type: "connected" | "draft.updated" | "recommendations.updated" | "simulation.updated";
+  sessionId: string;
+  sessionVersion: number;
+};
+
 export function isDraftSenseJob(value: unknown): value is DraftSenseJob {
   if (!value || typeof value !== "object") return false;
   const job = value as Record<string, unknown>;

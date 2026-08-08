@@ -4,7 +4,7 @@ import * as Accordion from "@radix-ui/react-accordion";
 import * as Dialog from "@radix-ui/react-dialog";
 import { UserButton } from "@clerk/nextjs";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 type League = { externalLeagueId: string; name: string; draftId?: string };
 type DraftTeam = { slot: number; name: string };
@@ -30,6 +30,11 @@ type SavedDraftRoom = {
   status: string;
   selectedTeam: { id: string; name: string; slot: number };
 };
+type RealtimeEvent = {
+  type: "connected" | "draft.updated" | "recommendations.updated" | "simulation.updated";
+  sessionId: string;
+  sessionVersion: number;
+};
 
 export function DraftAssistant() {
   const [username, setUsername] = useState("");
@@ -44,6 +49,10 @@ export function DraftAssistant() {
   const [source, setSource] = useState<{ leagueId: string; draftId: string } | null>(null);
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
   const [savedRooms, setSavedRooms] = useState<SavedDraftRoom[]>([]);
+  const [realtimeStatus, setRealtimeStatus] = useState<"connecting" | "connected" | "reconnecting">(
+    "reconnecting",
+  );
+  const sessionVersionRef = useRef(0);
 
   const refresh = useCallback(async (id: string) => {
     const [sessionResponse, recommendationResponse] = await Promise.all([
@@ -54,6 +63,7 @@ export function DraftAssistant() {
     const recommendationPayload = await recommendationResponse.json();
     if (sessionResponse.ok) {
       setSession(sessionPayload.data);
+      sessionVersionRef.current = sessionPayload.data.version;
       const importedSource = sessionPayload.data.settings?.source;
       if (importedSource?.leagueId && importedSource?.draftId) setSource(importedSource);
     }
@@ -128,6 +138,27 @@ export function DraftAssistant() {
     const timer = window.setInterval(() => void syncSleeperDraft(), 10_000);
     return () => window.clearInterval(timer);
   }, [refresh, session, source]);
+
+  useEffect(() => {
+    if (!session) return;
+    const sessionId = session.id;
+    const eventSource = new EventSource(`/api/v1/draft-sessions/${sessionId}/events`);
+    setRealtimeStatus("connecting");
+    const onUpdate = (event: MessageEvent<string>) => {
+      const update = JSON.parse(event.data) as RealtimeEvent;
+      if (update.sessionId !== sessionId) return;
+      setRealtimeStatus("connected");
+      if (update.type !== "connected" && update.sessionVersion >= sessionVersionRef.current)
+        void refresh(sessionId);
+    };
+    const onError = () => setRealtimeStatus("reconnecting");
+    eventSource.addEventListener("connected", onUpdate);
+    eventSource.addEventListener("draft.updated", onUpdate);
+    eventSource.addEventListener("recommendations.updated", onUpdate);
+    eventSource.addEventListener("simulation.updated", onUpdate);
+    eventSource.addEventListener("error", onError);
+    return () => eventSource.close();
+  }, [refresh, session?.id]);
 
   const loadLeagueTeams = async (league: League) => {
     if (!league.draftId || leagueTeams[league.externalLeagueId]) return;
@@ -362,6 +393,11 @@ export function DraftAssistant() {
                   <h2>
                     {session.teams.length} teams · board v{session.version}
                   </h2>
+                  <small className="realtime-status">
+                    {realtimeStatus === "connected"
+                      ? "Live updates connected"
+                      : "Live updates reconnecting; polling remains active"}
+                  </small>
                 </div>
                 <button
                   type="button"

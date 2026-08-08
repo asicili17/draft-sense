@@ -285,6 +285,11 @@ select:focus {
 .room-header h2 {
   font-size: 24px;
 }
+.realtime-status {
+  color: #9fa7a1;
+  display: block;
+  margin-top: 4px;
+}
 .secondary {
   background: #202722 !important;
   color: #d9e0da !important;
