@@ -112,9 +112,22 @@ export function DraftAssistant() {
 
   useEffect(() => {
     if (!session) return;
-    const timer = window.setInterval(() => void refresh(session.id), 10_000);
+    const syncSleeperDraft = async () => {
+      const selectedTeamSlot = session.teams.find((team) => team.id === session.selectedTeamId)?.slot;
+      if (!source || !selectedTeamSlot) return refresh(session.id);
+      const response = await fetch("/api/v1/draft-sessions/imports/sleeper", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...source, selectedTeamSlot }),
+      });
+      if (response.ok) {
+        const payload = await response.json();
+        await refresh(payload.data.id);
+      }
+    };
+    const timer = window.setInterval(() => void syncSleeperDraft(), 10_000);
     return () => window.clearInterval(timer);
-  }, [refresh, session]);
+  }, [refresh, session, source]);
 
   const loadLeagueTeams = async (league: League) => {
     if (!league.draftId || leagueTeams[league.externalLeagueId]) return;
