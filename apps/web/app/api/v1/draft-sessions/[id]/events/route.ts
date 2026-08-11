@@ -33,6 +33,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         { status: 404 },
       );
 
+    let cancelled = false;
     const stream = new ReadableStream<Uint8Array>({
       async start(controller) {
         const encoder = new TextEncoder();
@@ -42,9 +43,9 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
           encodeEvent(encoder, { type: "connected", sessionId: id, sessionVersion: initialState.sessionVersion }),
         );
         try {
-          while (!request.signal.aborted) {
+          while (!request.signal.aborted && !cancelled) {
             await sleep(pollIntervalMs);
-            if (request.signal.aborted) break;
+            if (request.signal.aborted || cancelled) break;
             const next = await readSessionEventState(id);
             if (!next) break;
             for (const event of changedSessionEvents(id, previous, next))
@@ -58,8 +59,15 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         } catch {
           // EventSource reconnects automatically; avoid exposing internal failures to the client.
         } finally {
-          controller.close();
+          try {
+            controller.close();
+          } catch {
+            // The browser may have already cancelled the stream.
+          }
         }
+      },
+      cancel() {
+        cancelled = true;
       },
     });
     return new NextResponse(stream, {

@@ -5,6 +5,8 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { UserButton } from "@clerk/nextjs";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { shouldRefetchForRealtimeEvent } from "../features/draft/realtime";
+import type { DraftRealtimeEvent } from "@draft-sense/events";
 
 type League = { externalLeagueId: string; name: string; draftId?: string };
 type DraftTeam = { slot: number; name: string };
@@ -29,11 +31,6 @@ type SavedDraftRoom = {
   leagueName: string;
   status: string;
   selectedTeam: { id: string; name: string; slot: number };
-};
-type RealtimeEvent = {
-  type: "connected" | "draft.updated" | "recommendations.updated" | "simulation.updated";
-  sessionId: string;
-  sessionVersion: number;
 };
 
 export function DraftAssistant() {
@@ -145,10 +142,10 @@ export function DraftAssistant() {
     const eventSource = new EventSource(`/api/v1/draft-sessions/${sessionId}/events`);
     setRealtimeStatus("connecting");
     const onUpdate = (event: MessageEvent<string>) => {
-      const update = JSON.parse(event.data) as RealtimeEvent;
+      const update = JSON.parse(event.data) as DraftRealtimeEvent;
       if (update.sessionId !== sessionId) return;
       setRealtimeStatus("connected");
-      if (update.type !== "connected" && update.sessionVersion >= sessionVersionRef.current)
+      if (shouldRefetchForRealtimeEvent(update, sessionId, sessionVersionRef.current))
         void refresh(sessionId);
     };
     const onError = () => setRealtimeStatus("reconnecting");

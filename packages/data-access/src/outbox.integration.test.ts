@@ -38,4 +38,31 @@ describe("durable outbox", () => {
     await releaseOutboxEvent(claimed.id, claimed.leaseToken, new Error("Queue unavailable"));
     await expect(prisma.outboxEvent.findUniqueOrThrow({ where: { id: event.id } })).resolves.toMatchObject({ deadLetteredAt: expect.any(Date), lastError: "Queue unavailable" });
   });
+
+  it("retries a released event once without duplicating the eventual delivery", async () => {
+    const id = await sessionId();
+    const event = await prisma.outboxEvent.create({
+      data: { sessionId: id, type: "draft.pick.recorded", payload: {} },
+    });
+    const [firstClaim] = await claimOutboxEvents();
+    if (!firstClaim) throw new Error("Expected an outbox claim.");
+    await releaseOutboxEvent(firstClaim.id, firstClaim.leaseToken, new Error("Temporary outage"));
+    await prisma.outboxEvent.update({
+      where: { id: event.id },
+      data: { availableAt: new Date(Date.now() - 1) },
+    });
+
+    const [retryClaim] = await claimOutboxEvents();
+    if (!retryClaim) throw new Error("Expected the event to be retried.");
+    expect(retryClaim.id).toBe(event.id);
+    expect(retryClaim.leaseToken).not.toBe(firstClaim.leaseToken);
+    await markOutboxDelivered(retryClaim.id, retryClaim.leaseToken, "message-after-retry");
+
+    await expect(prisma.outboxEvent.findUniqueOrThrow({ where: { id: event.id } })).resolves.toMatchObject({
+      attempts: 2,
+      queueMessageId: "message-after-retry",
+      processedAt: expect.any(Date),
+    });
+    await expect(claimOutboxEvents()).resolves.toEqual([]);
+  });
 });
