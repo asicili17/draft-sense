@@ -7,6 +7,7 @@ export function jobQueue(): DurableQueue | undefined {
   return new QStashQueue({
     token: env.QSTASH_TOKEN,
     destination: `${env.APP_URL}/api/jobs/execute`,
+    apiUrl: env.QSTASH_URL,
   });
 }
 

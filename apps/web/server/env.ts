@@ -12,6 +12,7 @@ const schema = z.object({
   OPENAI_API_KEY: z.string().min(1).optional(),
   CRON_SECRET: z.string().min(24).optional(),
   QSTASH_TOKEN: z.string().min(1).optional(),
+  QSTASH_URL: z.string().url().default("https://qstash-us-east-1.upstash.io"),
   QSTASH_CURRENT_SIGNING_KEY: z.string().min(1).optional(),
   QSTASH_NEXT_SIGNING_KEY: z.string().min(1).optional(),
   UPSTASH_REDIS_REST_URL: z.string().url().optional(),
