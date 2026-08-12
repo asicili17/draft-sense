@@ -14,11 +14,11 @@ export type DraftSenseJob = {
 };
 
 /** Public, one-way notification sent to an authorized draft-room client. */
-export type DraftRealtimeEvent = {
-  type: "connected" | "draft.updated" | "recommendations.updated" | "simulation.updated";
-  sessionId: string;
-  sessionVersion: number;
-};
+export type DraftRealtimeEvent =
+  | { type: "connected"; sessionId: string; sessionVersion: number }
+  | { type: "draft.updated"; sessionId: string; sessionVersion: number }
+  | { type: "recommendations.updated"; sessionId: string; sessionVersion: number }
+  | { type: "simulation.updated"; sessionId: string; sessionVersion: number };
 
 export function isDraftSenseJob(value: unknown): value is DraftSenseJob {
   if (!value || typeof value !== "object") return false;

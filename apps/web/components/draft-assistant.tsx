@@ -6,6 +6,7 @@ import { UserButton } from "@clerk/nextjs";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { shouldRefetchForRealtimeEvent } from "../features/draft/realtime";
+import { useDraftRealtime } from "../features/draft/realtime-client";
 import type { DraftRealtimeEvent } from "@draft-sense/events";
 
 type League = { externalLeagueId: string; name: string; draftId?: string };
@@ -46,9 +47,6 @@ export function DraftAssistant() {
   const [source, setSource] = useState<{ leagueId: string; draftId: string } | null>(null);
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
   const [savedRooms, setSavedRooms] = useState<SavedDraftRoom[]>([]);
-  const [realtimeStatus, setRealtimeStatus] = useState<"connecting" | "connected" | "reconnecting">(
-    "reconnecting",
-  );
   const sessionVersionRef = useRef(0);
 
   const refresh = useCallback(async (id: string) => {
@@ -69,6 +67,18 @@ export function DraftAssistant() {
       setSnapshotId(recommendationPayload.data.snapshotId);
     }
   }, []);
+
+  const realtime = useDraftRealtime({
+    channels: session ? [`draft:${session.id}`] : [],
+    events: ["draft.updated", "recommendations.updated", "simulation.updated"],
+    enabled: Boolean(session),
+    onData: ({ data }) => {
+      const update = data as DraftRealtimeEvent;
+      if (!session || !shouldRefetchForRealtimeEvent(update, session.id, sessionVersionRef.current))
+        return;
+      void refresh(session.id);
+    },
+  });
 
   const loadSavedRooms = useCallback(async () => {
     const response = await fetch("/api/v1/draft-sessions", { cache: "no-store" });
@@ -119,42 +129,10 @@ export function DraftAssistant() {
 
   useEffect(() => {
     if (!session) return;
-    const syncSleeperDraft = async () => {
-      const selectedTeamSlot = session.teams.find((team) => team.id === session.selectedTeamId)?.slot;
-      if (!source || !selectedTeamSlot) return refresh(session.id);
-      const response = await fetch("/api/v1/draft-sessions/imports/sleeper", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ...source, selectedTeamSlot }),
-      });
-      if (response.ok) {
-        const payload = await response.json();
-        await refresh(payload.data.id);
-      }
-    };
-    const timer = window.setInterval(() => void syncSleeperDraft(), 10_000);
+    // This is a recovery read and active-room heartbeat, not a direct Sleeper poll.
+    // The server-side worker owns provider refreshes while this room remains active.
+    const timer = window.setInterval(() => void refresh(session.id), 10_000);
     return () => window.clearInterval(timer);
-  }, [refresh, session, source]);
-
-  useEffect(() => {
-    if (!session) return;
-    const sessionId = session.id;
-    const eventSource = new EventSource(`/api/v1/draft-sessions/${sessionId}/events`);
-    setRealtimeStatus("connecting");
-    const onUpdate = (event: MessageEvent<string>) => {
-      const update = JSON.parse(event.data) as DraftRealtimeEvent;
-      if (update.sessionId !== sessionId) return;
-      setRealtimeStatus("connected");
-      if (shouldRefetchForRealtimeEvent(update, sessionId, sessionVersionRef.current))
-        void refresh(sessionId);
-    };
-    const onError = () => setRealtimeStatus("reconnecting");
-    eventSource.addEventListener("connected", onUpdate);
-    eventSource.addEventListener("draft.updated", onUpdate);
-    eventSource.addEventListener("recommendations.updated", onUpdate);
-    eventSource.addEventListener("simulation.updated", onUpdate);
-    eventSource.addEventListener("error", onError);
-    return () => eventSource.close();
   }, [refresh, session?.id]);
 
   const loadLeagueTeams = async (league: League) => {
@@ -391,7 +369,7 @@ export function DraftAssistant() {
                     {session.teams.length} teams · board v{session.version}
                   </h2>
                   <small className="realtime-status">
-                    {realtimeStatus === "connected"
+                    {realtime.status === "connected"
                       ? "Live updates connected"
                       : "Live updates reconnecting; polling remains active"}
                   </small>

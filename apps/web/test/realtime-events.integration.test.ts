@@ -15,8 +15,7 @@ vi.mock("@clerk/nextjs/server", () => ({
       : null,
 }));
 
-import { GET } from "../app/api/v1/draft-sessions/[id]/events/route";
-import { changedSessionEvents } from "../server/realtime/session-events";
+import { authorizeDraftChannels } from "../server/realtime/authorization";
 
 describe("draft room SSE events", () => {
   beforeEach(async () => {
@@ -25,61 +24,25 @@ describe("draft room SSE events", () => {
   });
   afterAll(() => prisma.$disconnect());
 
-  it("rejects an unauthenticated event-stream request", async () => {
+  it("rejects an unauthenticated realtime subscription", async () => {
     const { session } = await createDraftFixture();
     actor.userId = null;
 
-    const response = await GET(new Request("http://localhost"), {
-      params: Promise.resolve({ id: session.id }),
-    });
+    const response = await authorizeDraftChannels([`draft:${session.id}`]);
 
-    expect(response.status).toBe(401);
+    expect(response?.status).toBe(401);
   });
 
-  it("opens an owner-only stream with a version-only connected payload", async () => {
+  it("allows an owner to subscribe only to their draft channel", async () => {
     const { session } = await createDraftFixture();
-    const response = await GET(new Request("http://localhost"), {
-      params: Promise.resolve({ id: session.id }),
-    });
+    const response = await authorizeDraftChannels([`draft:${session.id}`]);
 
-    expect(response.status).toBe(200);
-    expect(response.headers.get("content-type")).toContain("text/event-stream");
-    const reader = response.body?.getReader();
-    if (!reader) throw new Error("Expected an SSE response body.");
-    const first = await reader.read();
-    const text = new TextDecoder().decode(first.value);
-    expect(text).toContain("event: connected");
-    expect(JSON.parse(text.match(/data: (.+)/)?.[1] ?? "{}")).toEqual({
-      type: "connected",
-      sessionId: session.id,
-      sessionVersion: session.version,
-    });
-    await reader.cancel();
+    expect(response).toBeUndefined();
   });
 
-  it("emits only versioned public events for durable-state changes", () => {
-    expect(
-      changedSessionEvents(
-        "session-1",
-        {
-          sessionVersion: 2,
-          recommendationId: "recommendation-1",
-          recommendationVersion: 2,
-          simulationId: null,
-          simulationVersion: null,
-        },
-        {
-          sessionVersion: 3,
-          recommendationId: "recommendation-2",
-          recommendationVersion: 3,
-          simulationId: "simulation-1",
-          simulationVersion: 3,
-        },
-      ),
-    ).toEqual([
-      { type: "draft.updated", sessionId: "session-1", sessionVersion: 3 },
-      { type: "recommendations.updated", sessionId: "session-1", sessionVersion: 3 },
-      { type: "simulation.updated", sessionId: "session-1", sessionVersion: 3 },
-    ]);
+  it("rejects a channel that does not name an authorized draft", async () => {
+    const response = await authorizeDraftChannels(["admin:all-drafts"]);
+
+    expect(response?.status).toBe(403);
   });
 });

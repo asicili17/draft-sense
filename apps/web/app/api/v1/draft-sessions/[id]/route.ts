@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireSessionAccess, selectDraftTeam } from "../../../../../server/auth";
 import { apiError } from "../../../../../server/http";
+import { enqueueJob } from "../../../../../server/jobs/queue";
+import { parseEnvironment } from "../../../../../server/env";
 const updateSchema = z.object({ selectedTeamId: z.string().uuid() });
 export async function GET(_: Request, context: { params: Promise<{ id: string }> }) {
   try {
@@ -14,9 +16,14 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
         { error: { code: "NOT_FOUND", message: "Draft session not found." } },
         { status: 404 },
       );
+    const becameActive =
+      Date.now() - session.lastViewedAt.getTime() > parseEnvironment().LIVE_DRAFT_POLL_SECONDS * 3_000;
     await import("@draft-sense/data-access").then(({ prisma }) =>
       prisma.draftSession.update({ where: { id }, data: { lastViewedAt: new Date() } }),
     );
+    // Restart a stopped active-draft refresh loop when a user reopens the room.
+    if (becameActive && session.status === "LIVE")
+      await enqueueJob({ type: "sleeper.refresh.requested", sessionId: id }).catch(() => undefined);
     const selectedTeam = await import("@draft-sense/data-access").then(({ prisma }) =>
       prisma.userDraftTeamSelection.findUnique({
         where: { userId_sessionId: { userId: user.id, sessionId: id } },

@@ -7,6 +7,7 @@ import { buildAppContainer } from "../container";
 import { parseEnvironment } from "../env";
 import { enqueueJob } from "./queue";
 import { jobTelemetry } from "./telemetry";
+import { publishDraftUpdate } from "../realtime/upstash";
 
 async function recompute(sessionId: string, expectedVersion?: number) {
   const session = await getDraftSession(sessionId);
@@ -28,6 +29,11 @@ async function recompute(sessionId: string, expectedVersion?: number) {
     update: {},
     create: { sessionId, sessionVersion: session.version, algorithmVersion, input: { rosterPositions, roster, selectedTeamId: selection.teamId, datasetId: session.datasetId }, result: JSON.parse(JSON.stringify(results)) },
   });
+  await publishDraftUpdate({
+    type: "recommendations.updated",
+    sessionId,
+    sessionVersion: session.version,
+  });
   await enqueueJob({ type: "simulation.run", sessionId, sessionVersion: session.version });
 }
 
@@ -48,6 +54,11 @@ async function simulate(sessionId: string, expectedVersion?: number) {
   const current = await prisma.draftSession.findUnique({ where: { id: sessionId }, select: { version: true } });
   if (!current || current.version !== session.version) return;
   await prisma.simulationRun.upsert({ where: { sessionId_sessionVersion_seed: { sessionId, sessionVersion: session.version, seed } }, update: { result: JSON.parse(JSON.stringify(result)), trials }, create: { sessionId, sessionVersion: session.version, seed, trials, result: JSON.parse(JSON.stringify(result)) } });
+  await publishDraftUpdate({
+    type: "simulation.updated",
+    sessionId,
+    sessionVersion: session.version,
+  });
 }
 
 async function refreshSleeper(sessionId: string) {
@@ -61,8 +72,23 @@ async function refreshSleeper(sessionId: string) {
   if (!source?.leagueId || !source.draftId || !selection) return;
   const sleeper = buildAppContainer().sleeper;
   const [league, draft] = await Promise.all([sleeper.getLeagueSnapshot({ leagueId: source.leagueId }), sleeper.getDraftSnapshot({ draftId: source.draftId, leagueId: source.leagueId })]);
-  await importSleeperLeague({ league, draft, ownerId: session.ownerId, selectedTeamSlot: selection.team.slot });
-  if (draft.status !== "complete")
+  const refreshed = await importSleeperLeague({
+    league,
+    draft,
+    ownerId: session.ownerId,
+    selectedTeamSlot: selection.team.slot,
+  });
+  if (!refreshed) return;
+  if (refreshed.version > session.version)
+    await publishDraftUpdate({
+      type: "draft.updated",
+      sessionId,
+      sessionVersion: refreshed.version,
+    });
+  if (
+    draft.status !== "complete" &&
+    Date.now() - refreshed.lastViewedAt.getTime() <= pollSeconds * 3_000
+  )
     await enqueueJob({ type: "sleeper.refresh.requested", sessionId }, pollSeconds);
 }
 
