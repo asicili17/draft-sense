@@ -44,7 +44,10 @@ export class QStashQueue implements DurableQueue {
 
   async publish(job: DraftSenseJob, options: { delaySeconds?: number } = {}) {
     const response = await fetch(
-      `${this.input.apiUrl ?? "https://qstash.upstash.io"}/v2/publish/${this.input.destination}`,
+      // The destination is itself a URL and can contain query parameters (such
+      // as Vercel's automation-protection bypass). It must remain one path
+      // segment of the QStash publish URL so those parameters are forwarded.
+      `${this.input.apiUrl ?? "https://qstash.upstash.io"}/v2/publish/${encodeURIComponent(this.input.destination)}`,
       {
         method: "POST",
         headers: {
