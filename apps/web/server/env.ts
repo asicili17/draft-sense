@@ -18,6 +18,9 @@ const schema = z.object({
   UPSTASH_REDIS_REST_URL: z.string().url().optional(),
   UPSTASH_REDIS_REST_TOKEN: z.string().min(1).optional(),
   APP_URL: z.string().url().optional(),
+  // Vercel injects this system variable when Protection Bypass for Automation
+  // is enabled. QStash cannot send the header, so we add it to its destination.
+  VERCEL_AUTOMATION_BYPASS_SECRET: z.string().min(1).optional(),
   LIVE_DRAFT_POLL_SECONDS: z.coerce.number().int().min(5).max(60).default(10),
 });
 export type Environment = z.infer<typeof schema>;
