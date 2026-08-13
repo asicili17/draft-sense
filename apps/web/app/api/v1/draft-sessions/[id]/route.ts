@@ -36,6 +36,26 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
     return apiError(error);
   }
 }
+/** Starts the server-side Sleeper refresh loop when a user opens this room. */
+export async function POST(_: Request, context: { params: Promise<{ id: string }> }) {
+  try {
+    const id = (await context.params).id;
+    const { session } = await requireSessionAccess(id);
+    if (!session)
+      return NextResponse.json(
+        { error: { code: "NOT_FOUND", message: "Draft session not found." } },
+        { status: 404 },
+      );
+    await import("@draft-sense/data-access").then(({ prisma }) =>
+      prisma.draftSession.update({ where: { id }, data: { lastViewedAt: new Date() } }),
+    );
+    // The worker re-reads the session and exits immediately for completed drafts.
+    await enqueueJob({ type: "sleeper.refresh.requested", sessionId: id });
+    return NextResponse.json({ data: { activated: true } });
+  } catch (error) {
+    return apiError(error);
+  }
+}
 export async function PATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
     const id = (await context.params).id;

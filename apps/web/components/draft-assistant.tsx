@@ -135,6 +135,15 @@ export function DraftAssistant() {
     return () => window.clearInterval(timer);
   }, [refresh, session?.id]);
 
+  useEffect(() => {
+    if (!session) return;
+    // Opening a room explicitly starts its server-side Sleeper refresh loop. This
+    // must not depend on the last heartbeat, which may belong to an earlier visit.
+    void fetch(`/api/v1/draft-sessions/${session.id}`, { method: "POST" }).then((response) => {
+      if (!response.ok) setMessage("Could not start live Sleeper updates. Please try reopening the room.");
+    });
+  }, [session?.id]);
+
   const loadLeagueTeams = async (league: League) => {
     if (!league.draftId || leagueTeams[league.externalLeagueId]) return;
     setLoadingLeagueId(league.externalLeagueId);
