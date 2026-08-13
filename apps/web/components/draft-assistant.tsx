@@ -49,24 +49,31 @@ export function DraftAssistant() {
   const [savedRooms, setSavedRooms] = useState<SavedDraftRoom[]>([]);
   const sessionVersionRef = useRef(0);
 
-  const refresh = useCallback(async (id: string) => {
-    const [sessionResponse, recommendationResponse] = await Promise.all([
-      fetch(`/api/v1/draft-sessions/${id}`, { cache: "no-store" }),
-      fetch(`/api/v1/draft-sessions/${id}/recommendations`, { cache: "no-store" }),
-    ]);
+  const refreshSession = useCallback(async (id: string) => {
+    const sessionResponse = await fetch(`/api/v1/draft-sessions/${id}`, { cache: "no-store" });
     const sessionPayload = await sessionResponse.json();
-    const recommendationPayload = await recommendationResponse.json();
     if (sessionResponse.ok) {
       setSession(sessionPayload.data);
       sessionVersionRef.current = sessionPayload.data.version;
       const importedSource = sessionPayload.data.settings?.source;
       if (importedSource?.leagueId && importedSource?.draftId) setSource(importedSource);
     }
+  }, []);
+
+  const refreshRecommendations = useCallback(async (id: string) => {
+    const recommendationResponse = await fetch(`/api/v1/draft-sessions/${id}/recommendations`, {
+      cache: "no-store",
+    });
+    const recommendationPayload = await recommendationResponse.json();
     if (recommendationResponse.ok) {
       setRecommendations(recommendationPayload.data.recommendations);
       setSnapshotId(recommendationPayload.data.snapshotId);
     }
   }, []);
+
+  const refresh = useCallback(async (id: string) => {
+    await Promise.all([refreshSession(id), refreshRecommendations(id)]);
+  }, [refreshRecommendations, refreshSession]);
 
   const realtime = useDraftRealtime({
     channels: session ? [`draft:${session.id}`] : [],
@@ -131,9 +138,9 @@ export function DraftAssistant() {
     if (!session) return;
     // This is a recovery read and active-room heartbeat, not a direct Sleeper poll.
     // The server-side worker owns provider refreshes while this room remains active.
-    const timer = window.setInterval(() => void refresh(session.id), 10_000);
+    const timer = window.setInterval(() => void refreshSession(session.id), 10_000);
     return () => window.clearInterval(timer);
-  }, [refresh, session?.id]);
+  }, [refreshSession, session?.id]);
 
   useEffect(() => {
     if (!session) return;
