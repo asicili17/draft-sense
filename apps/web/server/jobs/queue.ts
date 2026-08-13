@@ -1,5 +1,22 @@
-import { QStashQueue, type DraftSenseJob, type DurableQueue } from "@draft-sense/events";
+import { type DraftSenseJob, type DurableQueue } from "@draft-sense/events";
+import { Client } from "@upstash/qstash";
 import { parseEnvironment } from "../env";
+
+class QStashDurableQueue implements DurableQueue {
+  constructor(
+    private readonly client: Client,
+    private readonly destination: string,
+  ) {}
+
+  async publish(job: DraftSenseJob, options: { delaySeconds?: number } = {}) {
+    const result = await this.client.publishJSON({
+      url: this.destination,
+      body: job,
+      ...(options.delaySeconds === undefined ? {} : { delay: options.delaySeconds }),
+    });
+    return { messageId: result.messageId };
+  }
+}
 
 export function jobQueue(): DurableQueue | undefined {
   const env = parseEnvironment();
@@ -11,11 +28,10 @@ export function jobQueue(): DurableQueue | undefined {
       env.VERCEL_AUTOMATION_BYPASS_SECRET,
     );
   }
-  return new QStashQueue({
-    token: env.QSTASH_TOKEN,
-    destination: destination.toString(),
-    apiUrl: env.QSTASH_URL,
-  });
+  return new QStashDurableQueue(
+    new Client({ token: env.QSTASH_TOKEN, baseUrl: env.QSTASH_URL, devMode: false }),
+    destination.toString(),
+  );
 }
 
 export async function enqueueJob(job: DraftSenseJob, delaySeconds?: number) {

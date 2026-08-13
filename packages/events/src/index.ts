@@ -35,31 +35,3 @@ export function isDraftSenseJob(value: unknown): value is DraftSenseJob {
 export interface DurableQueue {
   publish(job: DraftSenseJob, options?: { delaySeconds?: number }): Promise<{ messageId: string }>;
 }
-
-/** HTTP-push queue adapter. QStash delivers the payload to a protected app route. */
-export class QStashQueue implements DurableQueue {
-  constructor(
-    private readonly input: { token: string; destination: string; apiUrl?: string },
-  ) {}
-
-  async publish(job: DraftSenseJob, options: { delaySeconds?: number } = {}) {
-    const response = await fetch(
-      // The destination is itself a URL and can contain query parameters (such
-      // as Vercel's automation-protection bypass). It must remain one path
-      // segment of the QStash publish URL so those parameters are forwarded.
-      `${this.input.apiUrl ?? "https://qstash.upstash.io"}/v2/publish/${encodeURIComponent(this.input.destination)}`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.input.token}`,
-          "Content-Type": "application/json",
-          ...(options.delaySeconds ? { "Upstash-Delay": `${options.delaySeconds}s` } : {}),
-        },
-        body: JSON.stringify(job),
-      },
-    );
-    if (!response.ok) throw new Error(`QStash publish failed with ${response.status}.`);
-    const body = (await response.json()) as { messageId?: string };
-    return { messageId: body.messageId ?? "unknown" };
-  }
-}
