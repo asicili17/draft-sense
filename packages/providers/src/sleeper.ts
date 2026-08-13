@@ -140,7 +140,9 @@ export class SleeperLeagueProvider implements LeaguePlatformProvider {
                   rosterId: String(pick.roster_id),
                   ...(fullName ? { fullName } : {}),
                   ...(pick.metadata?.team ? { team: pick.metadata.team } : {}),
-                  ...(pick.metadata?.position ? { position: pick.metadata.position } : {}),
+                  ...(pick.metadata?.position
+                    ? { position: pick.metadata.position === "DEF" ? "DST" : pick.metadata.position }
+                    : {}),
                 },
               ];
             })()

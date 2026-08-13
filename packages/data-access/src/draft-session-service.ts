@@ -173,6 +173,17 @@ export async function importSleeperLeague(input: {
     const playerByExternalId = new Map(
       identityRows.map((identity) => [identity.externalId, identity.playerId]),
     );
+    // Sleeper represents team defenses as `DEF`; DraftSense uses the conventional
+    // `DST`. Repair rows created before that provider mapping existed as well.
+    const existingDefensePlayerIds = input.draft.picks
+      .filter((pick) => pick.position === "DST")
+      .map((pick) => playerByExternalId.get(pick.externalPlayerId))
+      .filter((playerId): playerId is string => Boolean(playerId));
+    if (existingDefensePlayerIds.length)
+      await tx.player.updateMany({
+        where: { id: { in: existingDefensePlayerIds } },
+        data: { positions: ["DST"] },
+      });
     const unmatchedSleeperPicks = input.draft.picks.filter(
       (pick) => !playerByExternalId.has(pick.externalPlayerId) && pick.fullName,
     );
