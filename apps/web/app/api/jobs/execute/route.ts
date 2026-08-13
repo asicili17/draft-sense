@@ -1,27 +1,27 @@
 import { isDraftSenseJob } from "@draft-sense/events";
+import { verifySignatureAppRouter } from "@upstash/qstash/nextjs";
 import { NextRequest, NextResponse } from "next/server";
 import { executeJob } from "../../../../server/jobs/worker";
-import { verifyQStashRequest } from "../../../../server/jobs/qstash-auth";
+import { jobTelemetry } from "../../../../server/jobs/telemetry";
 
-export async function POST(request: NextRequest) {
+export const POST = verifySignatureAppRouter(async (request: NextRequest) => {
   const body = await request.text();
-  const expectedUrl = `${process.env.APP_URL}/api/jobs/execute`;
-  const verified = await verifyQStashRequest({
-    signature: request.headers.get("upstash-signature"),
-    body,
-    expectedUrl,
-    currentSigningKey: process.env.QSTASH_CURRENT_SIGNING_KEY,
-    nextSigningKey: process.env.QSTASH_NEXT_SIGNING_KEY,
-  });
-  if (!verified)
-    return new NextResponse("Unauthorized", { status: 401 });
   let payload: unknown;
   try {
     payload = JSON.parse(body);
   } catch {
+    jobTelemetry("job.invalid_payload", { reason: "invalid_json" });
     return NextResponse.json({ error: "Invalid JSON job." }, { status: 400 });
   }
-  if (!isDraftSenseJob(payload)) return NextResponse.json({ error: "Invalid job." }, { status: 400 });
+  if (!isDraftSenseJob(payload)) {
+    jobTelemetry("job.invalid_payload", { reason: "invalid_job" });
+    return NextResponse.json({ error: "Invalid job." }, { status: 400 });
+  }
+  jobTelemetry("job.request_received", {
+    type: payload.type,
+    sessionId: payload.sessionId,
+    sessionVersion: payload.sessionVersion,
+  });
   await executeJob(payload);
   return NextResponse.json({ data: { accepted: true } });
-}
+});
