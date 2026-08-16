@@ -73,29 +73,41 @@ export function DraftAssistant() {
     }
   }, []);
 
-  const refresh = useCallback(async (id: string) => {
-    const inFlight = refreshInFlightRef.current.get(id);
-    if (inFlight) return inFlight;
-    const request = Promise.all([refreshSession(id), refreshRecommendations(id)]).then(() => undefined);
-    refreshInFlightRef.current.set(id, request);
-    try {
-      await request;
-    } finally {
-      refreshInFlightRef.current.delete(id);
-    }
-  }, [refreshRecommendations, refreshSession]);
+  const refresh = useCallback(
+    async (id: string) => {
+      const inFlight = refreshInFlightRef.current.get(id);
+      if (inFlight) return inFlight;
+      const request = Promise.all([refreshSession(id), refreshRecommendations(id)]).then(
+        () => undefined,
+      );
+      refreshInFlightRef.current.set(id, request);
+      try {
+        await request;
+      } finally {
+        refreshInFlightRef.current.delete(id);
+      }
+    },
+    [refreshRecommendations, refreshSession],
+  );
 
   const activeSessionId = session?.id;
   const realtimeChannels = useMemo(
     () => (activeSessionId ? [`draft:${activeSessionId}`] : []),
     [activeSessionId],
   );
-  const onRealtimeData = useCallback(({ data }: { data: unknown }) => {
-    const update = data as DraftRealtimeEvent;
-    const sessionId = session?.id;
-    if (!sessionId || !shouldRefetchForRealtimeEvent(update, sessionId, sessionVersionRef.current)) return;
-    void refresh(sessionId);
-  }, [refresh, session?.id]);
+  const onRealtimeData = useCallback(
+    ({ data }: { data: unknown }) => {
+      const update = data as DraftRealtimeEvent;
+      const sessionId = session?.id;
+      if (
+        !sessionId ||
+        !shouldRefetchForRealtimeEvent(update, sessionId, sessionVersionRef.current)
+      )
+        return;
+      void refresh(sessionId);
+    },
+    [refresh, session?.id],
+  );
 
   const realtime = useDraftRealtime({
     channels: realtimeChannels,
@@ -164,7 +176,8 @@ export function DraftAssistant() {
     // Opening a room explicitly starts its server-side Sleeper refresh loop. This
     // must not depend on the last heartbeat, which may belong to an earlier visit.
     void fetch(`/api/v1/draft-sessions/${session.id}`, { method: "POST" }).then((response) => {
-      if (!response.ok) setMessage("Could not start live Sleeper updates. Please try reopening the room.");
+      if (!response.ok)
+        setMessage("Could not start live Sleeper updates. Please try reopening the room.");
     });
   }, [session?.id]);
 
@@ -263,12 +276,12 @@ export function DraftAssistant() {
     setExplainingPlayerId(playerId);
     try {
       const response = await fetch(
-      `/api/v1/draft-sessions/${session.id}/recommendations/explanation`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ snapshotId, playerId }),
-      },
+        `/api/v1/draft-sessions/${session.id}/recommendations/explanation`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ snapshotId, playerId }),
+        },
       );
       const payload = await response.json();
       if (!response.ok) return setMessage(payload.error.message);
@@ -442,7 +455,7 @@ export function DraftAssistant() {
                   <h3>Draft board</h3>
                   {session.picks.length ? (
                     <ol>
-                      {session.picks.map((pick) => (
+                      {[...session.picks].reverse().map((pick) => (
                         <li key={pick.overallPick}>
                           <span>{pick.overallPick}</span>
                           <strong>{pick.player.fullName}</strong>
@@ -479,8 +492,8 @@ export function DraftAssistant() {
                     </article>
                   ))}
                   <p className="message">
-                    Picks are made in Sleeper. DraftSense updates recommendations after it detects the
-                    latest Sleeper draft board.
+                    Picks are made in Sleeper. DraftSense updates recommendations after it detects
+                    the latest Sleeper draft board.
                   </p>
                   {explanation && <p className="explanation">{explanation}</p>}
                 </section>
