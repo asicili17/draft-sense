@@ -4,7 +4,7 @@ import * as Accordion from "@radix-ui/react-accordion";
 import * as Dialog from "@radix-ui/react-dialog";
 import { UserButton } from "@clerk/nextjs";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { shouldRefetchForRealtimeEvent } from "../features/draft/realtime";
 import { useDraftRealtime } from "../features/draft/realtime-client";
 import type { DraftRealtimeEvent } from "@draft-sense/events";
@@ -44,10 +44,12 @@ export function DraftAssistant() {
   const [snapshotId, setSnapshotId] = useState("");
   const [message, setMessage] = useState("");
   const [explanation, setExplanation] = useState("");
+  const [explainingPlayerId, setExplainingPlayerId] = useState<string | null>(null);
   const [source, setSource] = useState<{ leagueId: string; draftId: string } | null>(null);
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
   const [savedRooms, setSavedRooms] = useState<SavedDraftRoom[]>([]);
   const sessionVersionRef = useRef(0);
+  const refreshInFlightRef = useRef(new Map<string, Promise<void>>());
 
   const refreshSession = useCallback(async (id: string) => {
     const sessionResponse = await fetch(`/api/v1/draft-sessions/${id}`, { cache: "no-store" });
@@ -72,19 +74,34 @@ export function DraftAssistant() {
   }, []);
 
   const refresh = useCallback(async (id: string) => {
-    await Promise.all([refreshSession(id), refreshRecommendations(id)]);
+    const inFlight = refreshInFlightRef.current.get(id);
+    if (inFlight) return inFlight;
+    const request = Promise.all([refreshSession(id), refreshRecommendations(id)]).then(() => undefined);
+    refreshInFlightRef.current.set(id, request);
+    try {
+      await request;
+    } finally {
+      refreshInFlightRef.current.delete(id);
+    }
   }, [refreshRecommendations, refreshSession]);
 
+  const activeSessionId = session?.id;
+  const realtimeChannels = useMemo(
+    () => (activeSessionId ? [`draft:${activeSessionId}`] : []),
+    [activeSessionId],
+  );
+  const onRealtimeData = useCallback(({ data }: { data: unknown }) => {
+    const update = data as DraftRealtimeEvent;
+    const sessionId = session?.id;
+    if (!sessionId || !shouldRefetchForRealtimeEvent(update, sessionId, sessionVersionRef.current)) return;
+    void refresh(sessionId);
+  }, [refresh, session?.id]);
+
   const realtime = useDraftRealtime({
-    channels: session ? [`draft:${session.id}`] : [],
+    channels: realtimeChannels,
     events: ["draft.updated", "recommendations.updated", "simulation.updated"],
     enabled: Boolean(session),
-    onData: ({ data }) => {
-      const update = data as DraftRealtimeEvent;
-      if (!session || !shouldRefetchForRealtimeEvent(update, session.id, sessionVersionRef.current))
-        return;
-      void refresh(session.id);
-    },
+    onData: onRealtimeData,
   });
 
   const loadSavedRooms = useCallback(async () => {
@@ -242,18 +259,23 @@ export function DraftAssistant() {
   };
 
   const explain = async (playerId: string) => {
-    if (!session || !snapshotId) return;
-    const response = await fetch(
+    if (!session || !snapshotId || explainingPlayerId) return;
+    setExplainingPlayerId(playerId);
+    try {
+      const response = await fetch(
       `/api/v1/draft-sessions/${session.id}/recommendations/explanation`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ snapshotId, playerId }),
       },
-    );
-    const payload = await response.json();
-    if (!response.ok) return setMessage(payload.error.message);
-    setExplanation(`${payload.data.summary} ${payload.data.uncertainty}`);
+      );
+      const payload = await response.json();
+      if (!response.ok) return setMessage(payload.error.message);
+      setExplanation(`${payload.data.summary} ${payload.data.uncertainty}`);
+    } finally {
+      setExplainingPlayerId(null);
+    }
   };
 
   return (
@@ -449,8 +471,9 @@ export function DraftAssistant() {
                           type="button"
                           className="secondary"
                           onClick={() => void explain(item.playerId)}
+                          disabled={Boolean(explainingPlayerId)}
                         >
-                          Why?
+                          {explainingPlayerId === item.playerId ? "Loading…" : "Why?"}
                         </button>
                       </div>
                     </article>

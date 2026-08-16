@@ -3,6 +3,11 @@ import { prisma } from "./prisma";
 import { scoreNflProjection } from "./nfl-scoring";
 import { matchPlayer, type DraftSnapshot, type LeagueSnapshot } from "@draft-sense/providers";
 const positionSet = new Set<Position>(["QB", "RB", "WR", "TE", "K", "DST", "DL", "LB", "DB"]);
+const playerKey = (player: { fullName: string; positions: Position[] }) =>
+  [
+    player.fullName.toLocaleLowerCase().replace(/[^a-z0-9]/g, ""),
+    player.positions[0] ?? "",
+  ].join(":");
 export async function importSleeperLeague(input: {
   league: LeagueSnapshot;
   draft: DraftSnapshot;
@@ -303,7 +308,7 @@ export async function getDraftSession(id: string) {
 export async function draftablePlayers(sessionId: string) {
   const session = await prisma.draftSession.findUniqueOrThrow({
     where: { id: sessionId },
-    include: { picks: true },
+    include: { picks: { include: { player: true } } },
   });
   const projections = await prisma.playerProjection.findMany({
     where: {
@@ -314,17 +319,22 @@ export async function draftablePlayers(sessionId: string) {
       },
     },
     include: { player: true },
-    take: 250,
+    // Fetch beyond a typical draft board so historical picks with provider IDs
+    // that do not yet match can still be filtered below.
+    take: 500,
     orderBy: { projectedPoints: "desc" },
   });
+  const draftedPlayerKeys = new Set(session.picks.map((pick) => playerKey(pick.player)));
   const scoringRules =
     (session.settings as { scoringRules?: Record<string, number> }).scoringRules ?? {};
-  return projections.map((projection) => ({
-    ...projection,
-    projectedPoints: scoreNflProjection(
-      (projection.metadata as { stats?: Record<string, number> } | null)?.stats ?? {},
-      scoringRules,
-    ),
-  }));
+  return projections
+    .filter((projection) => !draftedPlayerKeys.has(playerKey(projection.player)))
+    .map((projection) => ({
+      ...projection,
+      projectedPoints: scoreNflProjection(
+        (projection.metadata as { stats?: Record<string, number> } | null)?.stats ?? {},
+        scoringRules,
+      ),
+    }));
 }
 export { positionSet };

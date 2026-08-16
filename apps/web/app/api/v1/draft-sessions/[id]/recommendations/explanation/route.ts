@@ -36,15 +36,6 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
         { status: 404 },
       );
     const body = requestSchema.parse(await request.json());
-    const now = Date.now();
-    const requests = (recentRequests.get(id) ?? []).filter((time) => now - time < 60_000);
-    if (requests.length >= 6)
-      return NextResponse.json(
-        { error: { code: "RATE_LIMITED", message: "Try another explanation in a minute." } },
-        { status: 429 },
-      );
-    requests.push(now);
-    recentRequests.set(id, requests);
     const snapshot = await prisma.recommendationSnapshot.findFirst({
       where: { id: body.snapshotId, sessionId: id },
     });
@@ -75,6 +66,16 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
         { error: { code: "NOT_FOUND", message: "Player is not in this recommendation snapshot." } },
         { status: 404 },
       );
+    const rateLimitKey = `${id}:${body.snapshotId}:${body.playerId}`;
+    const now = Date.now();
+    const requests = (recentRequests.get(rateLimitKey) ?? []).filter((time) => now - time < 60_000);
+    if (requests.length >= 3)
+      return NextResponse.json(
+        { error: { code: "RATE_LIMITED", message: "Try another explanation in a minute." } },
+        { status: 429 },
+      );
+    requests.push(now);
+    recentRequests.set(rateLimitKey, requests);
     const template = fallback(selected.name, selected.confidence, selected.factors);
     // Explanations are deliberately optional. A missing key, timeout, or invalid response always uses the
     // deterministic template and never blocks the draft workflow.

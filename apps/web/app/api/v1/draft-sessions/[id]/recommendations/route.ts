@@ -40,7 +40,15 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
         },
       });
     const pendingRecompute = await prisma.outboxEvent.findFirst({
-      where: { sessionId: id, type: "recommendations.recompute", processedAt: null, deadLetteredAt: null },
+      // QStash marks an outbox event delivered before the worker writes its
+      // snapshot. Keep a short delivery window so concurrent UI/SSE reads do
+      // not enqueue duplicate recomputes for the same board state.
+      where: {
+        sessionId: id,
+        type: { in: ["draft.pick.recorded", "recommendations.recompute"] },
+        deadLetteredAt: null,
+        createdAt: { gte: new Date(Date.now() - 60_000) },
+      },
     });
     if (!pendingRecompute)
       await prisma.outboxEvent.create({
