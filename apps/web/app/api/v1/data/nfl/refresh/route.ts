@@ -6,7 +6,12 @@ import { apiError } from "../../../../../../server/http";
 export async function POST(request: NextRequest) {
   try {
     const secret = process.env.CRON_SECRET;
-    if (!secret || request.headers.get("authorization") !== `Bearer ${secret}`) {
+    // Do not use Authorization here: Clerk processes that header before this
+    // route and treats a CRON_SECRET as an invalid session JWT.
+    if (
+      !secret ||
+      request.headers.get("x-draftsense-cron-secret") !== secret
+    ) {
       return new NextResponse("Unauthorized", { status: 401 });
     }
     const providers = buildAppContainer();
