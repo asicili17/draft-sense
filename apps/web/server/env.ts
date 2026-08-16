@@ -17,6 +17,9 @@ const schema = z.object({
   QSTASH_NEXT_SIGNING_KEY: z.string().min(1).optional(),
   UPSTASH_REDIS_REST_URL: z.string().url().optional(),
   UPSTASH_REDIS_REST_TOKEN: z.string().min(1).optional(),
+  // Vercel's deployment-specific hostname, without a protocol. Prefer this
+  // in Preview so jobs always execute the same build that published them.
+  VERCEL_URL: z.string().min(1).optional(),
   APP_URL: z.string().url().optional(),
   // Vercel injects this system variable when Protection Bypass for Automation
   // is enabled. QStash forwards it as a header to the worker route.

@@ -23,8 +23,12 @@ class QStashDurableQueue implements DurableQueue {
 
 export function jobQueue(): DurableQueue | undefined {
   const env = parseEnvironment();
-  if (!env.QSTASH_TOKEN || !env.APP_URL) return undefined;
-  const destination = new URL("/api/jobs/execute", env.APP_URL);
+  // APP_URL is a stable production URL. In Preview it may be a branch alias
+  // that still points at an older deployment, so use Vercel's per-deployment
+  // URL to keep the publisher and worker on the same application version.
+  const appUrl = env.VERCEL_URL ? `https://${env.VERCEL_URL}` : env.APP_URL;
+  if (!env.QSTASH_TOKEN || !appUrl) return undefined;
+  const destination = new URL("/api/jobs/execute", appUrl);
   return new QStashDurableQueue(
     new Client({ token: env.QSTASH_TOKEN, baseUrl: env.QSTASH_URL, devMode: false }),
     destination.toString(),
