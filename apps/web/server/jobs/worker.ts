@@ -23,7 +23,7 @@ async function recompute(sessionId: string, expectedVersion?: number) {
   });
   const current = await prisma.draftSession.findUnique({ where: { id: sessionId }, select: { version: true } });
   if (!current || current.version !== session.version) return;
-  const algorithmVersion = `${ALGORITHM_VERSION}:team:${selection.teamId}`;
+  const algorithmVersion = `${ALGORITHM_VERSION}:dataset:${session.datasetId}:team:${selection.teamId}`;
   await prisma.recommendationSnapshot.upsert({
     where: { sessionId_sessionVersion_algorithmVersion: { sessionId, sessionVersion: session.version, algorithmVersion } },
     update: {},

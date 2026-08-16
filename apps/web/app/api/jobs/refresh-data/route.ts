@@ -27,10 +27,8 @@ export async function GET(request: NextRequest) {
     providers.projections.getProjections({ season }),
     providers.adp.getAdp({ season, scoring: "ppr", teams: 12 }),
   ]);
-  const [dataset, outbox] = await Promise.all([
-    importNflDataset({ projections, adp }),
-    publishPendingOutbox(),
-  ]);
+  const dataset = await importNflDataset({ projections, adp });
+  const outbox = await publishPendingOutbox();
 
   return NextResponse.json({ data: { dataset, outbox } }, { status: 202 });
 }

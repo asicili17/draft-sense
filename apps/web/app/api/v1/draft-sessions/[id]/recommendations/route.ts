@@ -20,7 +20,7 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
         { status: 404 },
       );
     const userTeam = await requireSelectedTeam(id, user.id);
-    const algorithmVersion = `${ALGORITHM_VERSION}:team:${userTeam.id}`;
+    const algorithmVersion = `${ALGORITHM_VERSION}:dataset:${session.datasetId}:team:${userTeam.id}`;
     const existingSnapshot = await prisma.recommendationSnapshot.findUnique({
       where: {
         sessionId_sessionVersion_algorithmVersion: {

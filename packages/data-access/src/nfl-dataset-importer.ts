@@ -8,7 +8,10 @@ const projectedPoints = (stats: Readonly<Record<string, number>>) =>
   stats.fantasyPoints ?? stats.fantasy_points ?? stats.fantasy_points_ppr ?? 0;
 
 export async function importNflDataset(input: { projections: ProjectionImport; adp: AdpImport }) {
-  const version = input.projections.sourceVersion ?? input.projections.retrievedAt.toISOString();
+  // FantasyPros identifies a feed by week, but its projections can change within
+  // that week. A daily version makes each production refresh an immutable input
+  // for recommendation snapshots.
+  const version = `${input.projections.sourceVersion ?? "snapshot"}:${input.projections.retrievedAt.toISOString().slice(0, 10)}`;
   const dataset = await prisma.projectionDataset.upsert({
     where: { sport_source_version: { sport: "NFL", source: input.projections.source, version } },
     update: {},
@@ -81,5 +84,28 @@ export async function importNflDataset(input: { projections: ProjectionImport; a
       },
     });
   }
-  return { datasetId: dataset.id, playerCount: input.projections.players.length, version };
+  const liveSessions = await prisma.draftSession.findMany({
+    where: { sport: "NFL", status: "LIVE", datasetId: { not: dataset.id } },
+    select: { id: true, version: true },
+  });
+  if (liveSessions.length) {
+    await prisma.$transaction(
+      liveSessions.flatMap((session) => [
+        prisma.draftSession.update({ where: { id: session.id }, data: { datasetId: dataset.id } }),
+        prisma.outboxEvent.create({
+          data: {
+            sessionId: session.id,
+            type: "recommendations.recompute",
+            payload: { sessionVersion: session.version, reason: "projection_dataset_refreshed" },
+          },
+        }),
+      ]),
+    );
+  }
+  return {
+    datasetId: dataset.id,
+    playerCount: input.projections.players.length,
+    refreshedSessions: liveSessions.length,
+    version,
+  };
 }

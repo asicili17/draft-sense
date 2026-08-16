@@ -2,6 +2,7 @@ import { importNflDataset } from "@draft-sense/data-access";
 import { NextRequest, NextResponse } from "next/server";
 import { buildAppContainer } from "../../../../../../server/container";
 import { apiError } from "../../../../../../server/http";
+import { publishPendingOutbox } from "../../../../../../server/jobs/outbox-publisher";
 
 export async function POST(request: NextRequest) {
   try {
@@ -31,7 +32,9 @@ export async function POST(request: NextRequest) {
       providers.projections.getProjections({ season }),
       providers.adp.getAdp({ season, scoring: "ppr", teams: 12 }),
     ]);
-    return NextResponse.json({ data: await importNflDataset({ projections, adp }) });
+    const dataset = await importNflDataset({ projections, adp });
+    const outbox = await publishPendingOutbox();
+    return NextResponse.json({ data: { dataset, outbox } });
   } catch (error) {
     return apiError(error);
   }
