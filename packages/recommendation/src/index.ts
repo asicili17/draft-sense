@@ -1,6 +1,6 @@
 // Bump whenever the candidate pool or scoring semantics change so existing
 // immutable snapshots are never returned as though they used new logic.
-export const ALGORITHM_VERSION = "1.0.1";
+export const ALGORITHM_VERSION = "1.0.2";
 export interface RecommendationPlayer {
   id: string;
   name: string;

@@ -1,4 +1,4 @@
-import type { AdpImport, ProjectionImport } from "@draft-sense/providers";
+import { matchPlayer, type AdpImport, type ProjectionImport } from "@draft-sense/providers";
 import type { Position } from "@prisma/client";
 import { prisma } from "./prisma";
 
@@ -25,6 +25,10 @@ export async function importNflDataset(input: { projections: ProjectionImport; a
   const adpByName = new Map(
     input.adp.players.map((player) => [normalizeName(player.fullName), player.adp]),
   );
+  const candidates = await prisma.player.findMany({
+    where: { sport: "NFL" },
+    select: { id: true, fullName: true, team: true, positions: true },
+  });
   for (const projected of input.projections.players) {
     const position = (
       validPositions.has(projected.position ?? "") ? projected.position! : "WR"
@@ -38,6 +42,17 @@ export async function importNflDataset(input: { projections: ProjectionImport; a
       },
       include: { player: true },
     });
+    const existingMatch = identity
+      ? undefined
+      : matchPlayer(
+          { fullName: projected.fullName, team: projected.team, position },
+          candidates.map((candidate) => ({
+            id: candidate.id,
+            fullName: candidate.fullName,
+            team: candidate.team ?? undefined,
+            position: candidate.positions[0],
+          })),
+        );
     const player = identity
       ? await prisma.player.update({
           where: { id: identity.playerId },
@@ -47,20 +62,43 @@ export async function importNflDataset(input: { projections: ProjectionImport; a
             positions: [position],
           },
         })
-      : await prisma.player.create({
-          data: {
-            sport: "NFL",
-            fullName: projected.fullName,
-            team: projected.team ?? null,
-            positions: [position],
-            identities: {
-              create: {
-                provider: input.projections.source,
-                externalId: projected.externalPlayerId,
+      : existingMatch?.kind === "matched"
+        ? await prisma.player.update({
+            where: { id: existingMatch.playerId },
+            data: {
+              fullName: projected.fullName,
+              team: projected.team ?? null,
+              positions: [position],
+              identities: {
+                create: {
+                  provider: input.projections.source,
+                  externalId: projected.externalPlayerId,
+                },
               },
             },
-          },
-        });
+          })
+        : await prisma.player.create({
+            data: {
+              sport: "NFL",
+              fullName: projected.fullName,
+              team: projected.team ?? null,
+              positions: [position],
+              identities: {
+                create: {
+                  provider: input.projections.source,
+                  externalId: projected.externalPlayerId,
+                },
+              },
+            },
+          });
+    if (!identity && existingMatch?.kind !== "matched") {
+      candidates.push({
+        id: player.id,
+        fullName: player.fullName,
+        team: player.team,
+        positions: player.positions,
+      });
+    }
     await prisma.playerProjection.upsert({
       where: {
         datasetId_playerId_scoringFormatId: {

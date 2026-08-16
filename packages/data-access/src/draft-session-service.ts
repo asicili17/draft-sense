@@ -1,11 +1,16 @@
 import type { Position, Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { scoreNflProjection } from "./nfl-scoring";
-import { matchPlayer, type DraftSnapshot, type LeagueSnapshot } from "@draft-sense/providers";
+import {
+  matchPlayer,
+  normalizePlayerName,
+  type DraftSnapshot,
+  type LeagueSnapshot,
+} from "@draft-sense/providers";
 const positionSet = new Set<Position>(["QB", "RB", "WR", "TE", "K", "DST", "DL", "LB", "DB"]);
 const playerKey = (player: { fullName: string; positions: Position[] }) =>
   [
-    player.fullName.toLocaleLowerCase().replace(/[^a-z0-9]/g, ""),
+    normalizePlayerName(player.fullName),
     player.positions[0] ?? "",
   ].join(":");
 export async function importSleeperLeague(input: {
