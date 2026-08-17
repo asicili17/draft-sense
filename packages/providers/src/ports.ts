@@ -30,7 +30,18 @@ export interface DraftTeamSnapshot {
 export interface DraftSnapshot {
   readonly draftId: string;
   readonly status?: string | undefined;
+  readonly type?: "snake" | "auction" | string | undefined;
+  readonly settings?:
+    | {
+        readonly teams?: number | undefined;
+        readonly rounds?: number | undefined;
+        readonly pickTimer?: number | undefined;
+      }
+    | undefined;
   readonly draftOrder?: Readonly<Record<string, number>> | undefined;
+  readonly slotToRosterId?: Readonly<Record<string, string>> | undefined;
+  readonly pickSchedule?: readonly DraftPickScheduleEntry[] | undefined;
+  readonly tradedPicks?: readonly TradedDraftPick[] | undefined;
   readonly teams: readonly DraftTeamSnapshot[];
   readonly picks: readonly {
     overallPick: number;
@@ -41,6 +52,17 @@ export interface DraftSnapshot {
     position?: string;
   }[];
   readonly retrievedAt: Date;
+}
+export interface DraftPickScheduleEntry {
+  readonly overallPick: number;
+  readonly round: number;
+  readonly draftSlot: number;
+  readonly rosterId: string;
+}
+export interface TradedDraftPick {
+  readonly round: number;
+  readonly originalRosterId: string;
+  readonly currentRosterId: string;
 }
 export interface ProjectionRequest {
   readonly season: number;
@@ -74,6 +96,27 @@ export interface AdpImport {
   readonly retrievedAt: Date;
   readonly players: readonly AdpPlayer[];
 }
+export type MarketScoring = "standard" | "half-ppr" | "ppr";
+export interface MarketRankingRequest {
+  readonly season: number;
+  readonly scoring: MarketScoring;
+}
+export interface MarketPlayer {
+  readonly fullName: string;
+  readonly team?: string | undefined;
+  readonly position?: string | undefined;
+  readonly adp?: number | undefined;
+  readonly ecr?: number | undefined;
+  readonly tier?: number | undefined;
+  readonly rankStdDev?: number | undefined;
+}
+export interface MarketRankingImport {
+  readonly source: ProviderName;
+  readonly retrievedAt: Date;
+  readonly season: number;
+  readonly scoring: MarketScoring;
+  readonly players: readonly MarketPlayer[];
+}
 export interface LeaguePlatformProvider {
   findLeagues(input: { username: string; season: number }): Promise<readonly ExternalLeague[]>;
   getLeagueSnapshot(input: { leagueId: string }): Promise<LeagueSnapshot>;
@@ -84,4 +127,7 @@ export interface ProjectionProvider {
 }
 export interface AdpProvider {
   getAdp(input: AdpRequest): Promise<AdpImport>;
+}
+export interface MarketRankingProvider {
+  getConsensusRankings(input: MarketRankingRequest): Promise<MarketRankingImport>;
 }

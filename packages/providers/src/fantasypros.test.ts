@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { FantasyProsProjectionProvider } from "./fantasypros";
+import { FantasyProsMarketRankingProvider, FantasyProsProjectionProvider } from "./fantasypros";
 
 describe("FantasyProsProjectionProvider", () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -50,6 +50,50 @@ describe("FantasyProsProjectionProvider", () => {
         rec_td: 2.19,
         fumble_lost: 1.41,
       },
+    });
+  });
+});
+
+describe("FantasyProsMarketRankingProvider", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("imports scoring-specific consensus market fields", async () => {
+    const requestedUrls: string[] = [];
+    const fetch = vi.fn(async (input: RequestInfo | URL) => {
+      requestedUrls.push(String(input));
+      return new Response(
+        JSON.stringify({
+          players: [
+            {
+              player_name: "Saquon Barkley",
+              player_team_id: "PHI",
+              position_id: "RB",
+              adp_avg: "4.2",
+              rank_ecr: "3",
+              tier: "1",
+              rank_std_dev: "1.7",
+            },
+          ],
+        }),
+        { status: 200 },
+      );
+    });
+    vi.stubGlobal("fetch", fetch);
+
+    const result = await new FantasyProsMarketRankingProvider("test-key").getConsensusRankings({
+      season: 2026,
+      scoring: "half-ppr",
+    });
+
+    expect(fetch).toHaveBeenCalledTimes(6);
+    expect(requestedUrls[0]).toContain("scoring=HALF");
+    expect(result).toMatchObject({ source: "fantasypros", season: 2026, scoring: "half-ppr" });
+    expect(result.players[0]).toMatchObject({
+      fullName: "Saquon Barkley",
+      adp: 4.2,
+      ecr: 3,
+      tier: 1,
+      rankStdDev: 1.7,
     });
   });
 });

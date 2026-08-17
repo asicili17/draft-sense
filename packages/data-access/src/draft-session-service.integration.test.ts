@@ -33,6 +33,14 @@ const source = {
   draft: {
     draftId: "draft-1",
     status: "drafting",
+    type: "snake",
+    settings: { teams: 2, rounds: 16, pickTimer: 90 },
+    slotToRosterId: { "1": "roster-1", "2": "roster-2" },
+    pickSchedule: [
+      { overallPick: 1, round: 1, draftSlot: 1, rosterId: "roster-1" },
+      { overallPick: 2, round: 1, draftSlot: 2, rosterId: "roster-2" },
+    ],
+    tradedPicks: [{ round: 2, originalRosterId: "roster-1", currentRosterId: "roster-2" }],
     teams: [
       { slot: 1, name: "One", externalRosterId: "roster-1" },
       { slot: 2, name: "Two", externalRosterId: "roster-2" },
@@ -79,6 +87,13 @@ describe("Sleeper session import", () => {
     expect(session).toMatchObject({ status: "LIVE", teamCount: 2, version: 1 });
     expect(session?.teams).toHaveLength(2);
     expect(session?.picks).toHaveLength(1);
+    expect(session?.settings).toMatchObject({
+      draft: {
+        settings: { teams: 2, rounds: 16, pickTimer: 90 },
+        pickSchedule: [{ overallPick: 1, rosterId: "roster-1" }],
+        tradedPicks: [{ round: 2, currentRosterId: "roster-2" }],
+      },
+    });
     await expect(prisma.leagueIntegration.findFirstOrThrow()).resolves.toMatchObject({
       externalDraftId: "draft-1",
     });

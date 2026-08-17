@@ -1,4 +1,9 @@
-import { matchPlayer, type AdpImport, type ProjectionImport } from "@draft-sense/providers";
+import {
+  matchPlayer,
+  type AdpImport,
+  type MarketRankingImport,
+  type ProjectionImport,
+} from "@draft-sense/providers";
 import type { Position } from "@prisma/client";
 import { prisma } from "./prisma";
 
@@ -7,7 +12,20 @@ const normalizeName = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/
 const projectedPoints = (stats: Readonly<Record<string, number>>) =>
   stats.fantasyPoints ?? stats.fantasy_points ?? stats.fantasy_points_ppr ?? 0;
 
-export async function importNflDataset(input: { projections: ProjectionImport; adp: AdpImport }) {
+type StoredMarketProfile = {
+  source: string;
+  retrievedAt: string;
+  adp?: number;
+  ecr?: number;
+  tier?: number;
+  rankStdDev?: number;
+};
+
+export async function importNflDataset(input: {
+  projections: ProjectionImport;
+  adp: AdpImport;
+  marketRankings?: readonly MarketRankingImport[];
+}) {
   // FantasyPros identifies a feed by week, but its projections can change within
   // that week. A daily version makes each production refresh an immutable input
   // for recommendation snapshots.
@@ -24,6 +42,24 @@ export async function importNflDataset(input: { projections: ProjectionImport; a
   });
   const adpByName = new Map(
     input.adp.players.map((player) => [normalizeName(player.fullName), player.adp]),
+  );
+  const marketByScoring = new Map<string, Map<string, StoredMarketProfile>>(
+    (input.marketRankings ?? []).map((ranking) => [
+      ranking.scoring,
+      new Map(
+        ranking.players.map((player) => [
+          normalizeName(player.fullName),
+          {
+            source: ranking.source,
+            retrievedAt: ranking.retrievedAt.toISOString(),
+            ...(player.adp === undefined ? {} : { adp: player.adp }),
+            ...(player.ecr === undefined ? {} : { ecr: player.ecr }),
+            ...(player.tier === undefined ? {} : { tier: player.tier }),
+            ...(player.rankStdDev === undefined ? {} : { rankStdDev: player.rankStdDev }),
+          },
+        ]),
+      ),
+    ]),
   );
   const candidates = await prisma.player.findMany({
     where: { sport: "NFL" },
@@ -99,6 +135,14 @@ export async function importNflDataset(input: { projections: ProjectionImport; a
         positions: player.positions,
       });
     }
+    const playerMarkets = Object.fromEntries(
+      [...marketByScoring.entries()].flatMap(([scoring, market]) => {
+        const profile = market.get(normalizeName(projected.fullName));
+        return profile ? [[scoring, profile]] : [];
+      }),
+    );
+    const pprMarket = playerMarkets.ppr;
+    const fallbackAdp = adpByName.get(normalizeName(projected.fullName));
     await prisma.playerProjection.upsert({
       where: {
         datasetId_playerId_scoringFormatId: {
@@ -109,16 +153,16 @@ export async function importNflDataset(input: { projections: ProjectionImport; a
       },
       update: {
         projectedPoints: projectedPoints(projected.stats),
-        adp: adpByName.get(normalizeName(projected.fullName)) ?? null,
-        metadata: { stats: projected.stats },
+        adp: pprMarket?.adp ?? fallbackAdp ?? null,
+        metadata: { stats: projected.stats, market: playerMarkets },
       },
       create: {
         datasetId: dataset.id,
         playerId: player.id,
         scoringFormatId: scoring.id,
         projectedPoints: projectedPoints(projected.stats),
-        adp: adpByName.get(normalizeName(projected.fullName)) ?? null,
-        metadata: { stats: projected.stats },
+        adp: pprMarket?.adp ?? fallbackAdp ?? null,
+        metadata: { stats: projected.stats, market: playerMarkets },
       },
     });
   }

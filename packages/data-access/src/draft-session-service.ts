@@ -9,10 +9,7 @@ import {
 } from "@draft-sense/providers";
 const positionSet = new Set<Position>(["QB", "RB", "WR", "TE", "K", "DST", "DL", "LB", "DB"]);
 const playerKey = (player: { fullName: string; positions: Position[] }) =>
-  [
-    normalizePlayerName(player.fullName),
-    player.positions[0] ?? "",
-  ].join(":");
+  [normalizePlayerName(player.fullName), player.positions[0] ?? ""].join(":");
 export async function importSleeperLeague(input: {
   league: LeagueSnapshot;
   draft: DraftSnapshot;
@@ -108,6 +105,7 @@ export async function importSleeperLeague(input: {
         },
       }));
     const teamCount = Math.max(
+      input.draft.settings?.teams ?? 0,
       input.draft.teams.length,
       ...input.draft.picks.map((pick) => Number(pick.rosterId)),
       2,
@@ -115,6 +113,13 @@ export async function importSleeperLeague(input: {
     const settings = {
       rosterPositions: input.league.rosterPositions,
       scoringRules: input.league.scoringRules,
+      draft: {
+        type: input.draft.type ?? "snake",
+        settings: input.draft.settings ?? {},
+        slotToRosterId: input.draft.slotToRosterId ?? {},
+        pickSchedule: input.draft.pickSchedule ?? [],
+        tradedPicks: input.draft.tradedPicks ?? [],
+      },
       source: {
         provider: "sleeper",
         leagueId: input.league.league.externalLeagueId,
@@ -122,6 +127,10 @@ export async function importSleeperLeague(input: {
         syncedAt: input.draft.retrievedAt.toISOString(),
       },
     };
+    // Provider DTOs deliberately use readonly properties, while Prisma's JSON
+    // input requires mutable JSON objects. Serializing here also removes absent
+    // optional fields before persistence.
+    const persistedSettings = JSON.parse(JSON.stringify(settings)) as Prisma.InputJsonValue;
     const existing = await tx.draftSession.findFirst({
       where: { leagueId: league.id, status: { not: "COMPLETE" } },
       orderBy: { id: "desc" },
@@ -134,7 +143,7 @@ export async function importSleeperLeague(input: {
             datasetId: dataset.id,
             scoringFormatId: scoring.id,
             teamCount,
-            settings: settings as Prisma.InputJsonValue,
+            settings: persistedSettings,
           },
         })
       : await tx.draftSession.create({
@@ -147,7 +156,7 @@ export async function importSleeperLeague(input: {
             status: input.draft.status === "complete" ? "COMPLETE" : "LIVE",
             draftType: "SNAKE",
             teamCount,
-            settings: settings as Prisma.InputJsonValue,
+            settings: persistedSettings,
           },
         });
     await Promise.all(
@@ -231,7 +240,9 @@ export async function importSleeperLeague(input: {
                 })
               ).id;
         await tx.playerExternalIdentity.upsert({
-          where: { provider_externalId: { provider: "sleeper", externalId: pick.externalPlayerId } },
+          where: {
+            provider_externalId: { provider: "sleeper", externalId: pick.externalPlayerId },
+          },
           update: {},
           create: { provider: "sleeper", externalId: pick.externalPlayerId, playerId },
         });
@@ -326,8 +337,6 @@ export async function draftablePlayers(sessionId: string) {
     include: { player: true },
     // Fetch beyond a typical draft board so historical picks with provider IDs
     // that do not yet match can still be filtered below.
-    take: 500,
-    orderBy: { projectedPoints: "desc" },
   });
   const draftedPlayerKeys = new Set(session.picks.map((pick) => playerKey(pick.player)));
   const scoringRules =
@@ -340,6 +349,8 @@ export async function draftablePlayers(sessionId: string) {
         (projection.metadata as { stats?: Record<string, number> } | null)?.stats ?? {},
         scoringRules,
       ),
-    }));
+    }))
+    .sort((left, right) => right.projectedPoints - left.projectedPoints)
+    .slice(0, 500);
 }
 export { positionSet };

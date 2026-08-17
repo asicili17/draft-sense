@@ -10,6 +10,10 @@ const aliases: Record<string, readonly string[]> = {
   rec_yd: ["recYds", "receivingYards", "rec_yd"],
   rec_td: ["recTD", "receivingTouchdowns", "rec_td"],
   fumble_lost: ["fumblesLost", "fumble_lost"],
+  two_pt: ["twoPtConversions", "two_pt", "2pt_tds"],
+  pass_2pt: ["passTwoPtConversions", "pass_2pt"],
+  rush_2pt: ["rushTwoPtConversions", "rush_2pt"],
+  rec_2pt: ["recTwoPtConversions", "rec_2pt"],
 };
 
 const valueFor = (stats: NumericStats, keys: readonly string[]) =>

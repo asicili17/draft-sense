@@ -1,6 +1,9 @@
 import { getJson } from "./http";
 import {
   ProviderError,
+  type MarketRankingImport,
+  type MarketRankingProvider,
+  type MarketRankingRequest,
   type ProjectionImport,
   type ProjectionProvider,
   type ProjectionRequest,
@@ -14,6 +17,22 @@ type FantasyProsPlayer = {
   position_id?: string;
   team_id?: string;
   stats?: Record<string, number>;
+};
+
+type FantasyProsConsensusPlayer = {
+  player_name?: string;
+  name?: string;
+  player_team_id?: string;
+  team_id?: string;
+  position_id?: string;
+  position?: string;
+  adp?: number | string;
+  adp_avg?: number | string;
+  rank_ecr?: number | string;
+  tier?: number | string;
+  rank_std?: number | string;
+  rank_std_dev?: number | string;
+  rank_stddev?: number | string;
 };
 
 const numeric = (value: number | undefined) => value ?? 0;
@@ -75,6 +94,65 @@ export class FantasyProsProjectionProvider implements ProjectionProvider {
               ]
             : [],
         ),
+      ),
+    };
+  }
+}
+
+const numberOrUndefined = (value: number | string | undefined) => {
+  const number = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(number) ? number : undefined;
+};
+
+/** Fetches scoring-specific market consensus separately from player projections. */
+export class FantasyProsMarketRankingProvider implements MarketRankingProvider {
+  constructor(
+    private readonly apiKey: string,
+    private readonly baseUrl = "https://api.fantasypros.com/public/v2/json",
+  ) {}
+
+  async getConsensusRankings(input: MarketRankingRequest): Promise<MarketRankingImport> {
+    const responses = await Promise.all(
+      NFL_POSITIONS.map(async (position) => {
+        const url = new URL(`${this.baseUrl}/nfl/${input.season}/consensus-rankings`);
+        url.searchParams.set("position", position);
+        url.searchParams.set(
+          "scoring",
+          input.scoring === "half-ppr" ? "HALF" : input.scoring === "standard" ? "STD" : "PPR",
+        );
+        return (await getJson(url.toString(), {
+          headers: { "x-api-key": this.apiKey },
+        })) as { players?: FantasyProsConsensusPlayer[] };
+      }),
+    );
+    if (responses.some((response) => !Array.isArray(response.players)))
+      throw new ProviderError(
+        "INVALID_RESPONSE",
+        "FantasyPros response did not include consensus rankings.",
+      );
+    return {
+      source: "fantasypros",
+      retrievedAt: new Date(),
+      season: input.season,
+      scoring: input.scoring,
+      players: responses.flatMap((response) =>
+        (response.players ?? []).flatMap((player) => {
+          const fullName = player.player_name ?? player.name;
+          if (!fullName) return [];
+          return [
+            {
+              fullName,
+              team: player.player_team_id ?? player.team_id,
+              position: player.position_id ?? player.position,
+              adp: numberOrUndefined(player.adp ?? player.adp_avg),
+              ecr: numberOrUndefined(player.rank_ecr),
+              tier: numberOrUndefined(player.tier),
+              rankStdDev: numberOrUndefined(
+                player.rank_std_dev ?? player.rank_stddev ?? player.rank_std,
+              ),
+            },
+          ];
+        }),
       ),
     };
   }

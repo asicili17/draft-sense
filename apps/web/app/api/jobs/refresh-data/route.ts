@@ -23,11 +23,22 @@ export async function GET(request: NextRequest) {
   }
 
   const season = new Date().getFullYear();
-  const [projections, adp] = await Promise.all([
+  const [projections, adp, marketRankings] = await Promise.all([
     providers.projections.getProjections({ season }),
     providers.adp.getAdp({ season, scoring: "ppr", teams: 12 }),
+    Promise.all(
+      (["standard", "half-ppr", "ppr"] as const).map((scoring) =>
+        providers.marketRankings?.getConsensusRankings({ season, scoring }),
+      ),
+    ),
   ]);
-  const dataset = await importNflDataset({ projections, adp });
+  const dataset = await importNflDataset({
+    projections,
+    adp,
+    marketRankings: marketRankings.filter((ranking): ranking is NonNullable<typeof ranking> =>
+      Boolean(ranking),
+    ),
+  });
   const outbox = await publishPendingOutbox();
 
   return NextResponse.json({ data: { dataset, outbox } }, { status: 202 });

@@ -5,6 +5,7 @@ import {
   type ExternalLeague,
   type LeaguePlatformProvider,
   type LeagueSnapshot,
+  type TradedDraftPick,
 } from "./ports";
 export class SleeperLeagueProvider implements LeaguePlatformProvider {
   constructor(private readonly baseUrl = "https://api.sleeper.app/v1") {}
@@ -81,8 +82,10 @@ export class SleeperLeagueProvider implements LeaguePlatformProvider {
     draftId: string;
     leagueId?: string;
   }): Promise<DraftSnapshot> {
-    const [draft, picks, leagueUsers] = await Promise.all([
+    const [draft, picks, leagueUsers, trades] = await Promise.all([
       getJson(`${this.baseUrl}/draft/${encodeURIComponent(draftId)}`) as Promise<{
+        type?: "snake" | "auction";
+        settings?: { teams?: number; rounds?: number; pick_timer?: number };
         status?: string;
         draft_order?: Record<string, number>;
         slot_to_roster_id?: Record<string, number>;
@@ -100,6 +103,11 @@ export class SleeperLeagueProvider implements LeaguePlatformProvider {
             Array<{ user_id?: string; display_name?: string; metadata?: { team_name?: string } }>
           >)
         : Promise.resolve([]),
+      (
+        getJson(`${this.baseUrl}/draft/${encodeURIComponent(draftId)}/traded_picks`) as Promise<
+          Array<{ round?: number; roster_id?: number; owner_id?: number }>
+        >
+      ).catch(() => []),
     ]);
     if (!Array.isArray(picks))
       throw new ProviderError("INVALID_RESPONSE", "Sleeper picks response was not an array.");
@@ -121,10 +129,56 @@ export class SleeperLeagueProvider implements LeaguePlatformProvider {
           ]
         : [],
     );
+    const slotToRosterId = Object.fromEntries(
+      Object.entries(draft.slot_to_roster_id ?? {}).map(([slot, rosterId]) => [
+        slot,
+        String(rosterId),
+      ]),
+    );
+    const teamCount = draft.settings?.teams ?? teams.length;
+    const rounds = draft.settings?.rounds ?? 0;
+    const tradedPicks: readonly TradedDraftPick[] = trades.flatMap((trade) =>
+      Number.isInteger(trade.round) && trade.roster_id !== undefined && trade.owner_id !== undefined
+        ? [
+            {
+              round: trade.round as number,
+              originalRosterId: String(trade.roster_id),
+              currentRosterId: String(trade.owner_id),
+            },
+          ]
+        : [],
+    );
+    const schedule = Array.from({ length: teamCount * rounds }, (_, index) => {
+      const overallPick = index + 1;
+      const round = Math.ceil(overallPick / teamCount);
+      const roundOffset = (overallPick - 1) % teamCount;
+      const draftSlot = round % 2 === 1 ? roundOffset + 1 : teamCount - roundOffset;
+      const originalRosterId = slotToRosterId[String(draftSlot)];
+      const trade = tradedPicks.find(
+        (item) => item.round === round && item.originalRosterId === originalRosterId,
+      );
+      return originalRosterId
+        ? {
+            overallPick,
+            round,
+            draftSlot,
+            rosterId: trade?.currentRosterId ?? originalRosterId,
+          }
+        : undefined;
+    }).filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
     return {
       draftId,
       status: draft.status,
+      type: draft.type,
+      settings: {
+        teams: draft.settings?.teams,
+        rounds: draft.settings?.rounds,
+        pickTimer: draft.settings?.pick_timer,
+      },
       draftOrder: draft.draft_order,
+      slotToRosterId,
+      pickSchedule: schedule,
+      tradedPicks,
       teams,
       retrievedAt: new Date(),
       picks: picks.flatMap((pick) =>
@@ -141,7 +195,9 @@ export class SleeperLeagueProvider implements LeaguePlatformProvider {
                   ...(fullName ? { fullName } : {}),
                   ...(pick.metadata?.team ? { team: pick.metadata.team } : {}),
                   ...(pick.metadata?.position
-                    ? { position: pick.metadata.position === "DEF" ? "DST" : pick.metadata.position }
+                    ? {
+                        position: pick.metadata.position === "DEF" ? "DST" : pick.metadata.position,
+                      }
                     : {}),
                 },
               ];
