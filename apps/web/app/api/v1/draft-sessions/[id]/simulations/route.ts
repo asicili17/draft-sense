@@ -28,6 +28,9 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
     const players = await draftablePlayers(id);
     const rosterPositions =
       (session.settings as { rosterPositions?: string[] }).rosterPositions ?? [];
+    const totalRounds =
+      (session.settings as { draft?: { settings?: { rounds?: number } } }).draft?.settings
+        ?.rounds ?? rosterPositions.length;
     const userTeam = await requireSelectedTeam(id, user.id);
     const roster = session.picks
       .filter((pick) => pick.teamId === userTeam.id)
@@ -50,6 +53,9 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
       draftedPlayerIds: session.picks.map((pick) => pick.playerId),
       rosterPositions,
       roster,
+      teamCount: session.teamCount,
+      currentOverallPick: session.picks.length + 1,
+      totalRounds,
     }).slice(0, 12);
     let nextOverallPick = session.picks.length + 1;
     while (teamForOverallPick(nextOverallPick, session.teamCount) !== userTeam.slot)

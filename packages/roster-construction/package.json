@@ -1,11 +1,8 @@
 {
-  "name": "@draft-sense/recommendation",
+  "name": "@draft-sense/roster-construction",
   "private": true,
   "exports": {
     ".": "./src/index.ts"
-  },
-  "dependencies": {
-    "@draft-sense/roster-construction": "*"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

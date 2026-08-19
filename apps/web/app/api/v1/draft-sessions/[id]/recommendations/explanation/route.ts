@@ -54,6 +54,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
             vorp: z.number(),
             scarcity: z.number(),
             rosterFit: z.number(),
+            lineupGain: z.number(),
             adpValue: z.number(),
             risk: z.number(),
           }),

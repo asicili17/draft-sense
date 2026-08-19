@@ -15,9 +15,10 @@ type ImportPreview = { league: League; teams: DraftTeam[]; selectedTeamSlot: num
 type Recommendation = {
   playerId: string;
   name: string;
+  reason: string;
   score: number;
   confidence: number;
-  factors: { vorp: number; scarcity: number; rosterFit: number };
+  factors: { vorp: number; scarcity: number; rosterFit: number; lineupGain: number };
 };
 type Session = {
   id: string;
@@ -476,7 +477,7 @@ export function DraftAssistant() {
                         Score {item.score} · {Math.round(item.confidence * 100)}% confidence
                       </span>
                       <small>
-                        VORP {item.factors.vorp.toFixed(1)} · roster fit{" "}
+                        {item.reason} VORP {item.factors.vorp.toFixed(1)} · roster fit{" "}
                         {item.factors.rosterFit.toFixed(2)}
                       </small>
                       <div>
