@@ -68,4 +68,52 @@ describe("recommend", () => {
     expect(results[0]?.playerId).toBe("qb-2");
     expect(results[0]?.reason).toContain("SUPER FLEX");
   });
+
+  it("prioritizes a needed player who is unlikely to reach the next pick", () => {
+    const results = recommend({
+      players: [
+        {
+          id: "wr-now",
+          name: "WR Now",
+          position: "WR",
+          projectedPoints: 250,
+          adp: 35,
+          tier: 1,
+          rankStdDev: 8,
+        },
+        {
+          id: "rb-wait",
+          name: "RB Wait",
+          position: "RB",
+          projectedPoints: 265,
+          adp: 70,
+          tier: 1,
+          rankStdDev: 8,
+        },
+      ],
+      draftedPlayerIds: [],
+      rosterPositions: ["QB", "RB", "WR", "TE", "FLEX", "BN"],
+      roster: ["QB", "TE"],
+      teamCount: 12,
+      currentOverallPick: 32,
+      nextOverallPick: 56,
+      totalRounds: 15,
+    });
+
+    expect(results[0]?.playerId).toBe("wr-now");
+    expect(results[0]?.factors.availability).toBeLessThan(0.1);
+    expect(results[0]?.reason).toContain("Take now");
+  });
+
+  it("rewards a player only after they have actually fallen past ADP", () => {
+    const [result] = recommend({
+      players: [{ id: "falling", name: "Falling", position: "WR", projectedPoints: 220, adp: 20 }],
+      draftedPlayerIds: [],
+      rosterPositions: ["WR"],
+      roster: [],
+      currentOverallPick: 40,
+      nextOverallPick: 50,
+    });
+    expect(result?.factors.adpValue).toBe(1);
+  });
 });

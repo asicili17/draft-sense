@@ -6,7 +6,7 @@ import {
 } from "@draft-sense/data-access";
 import { ALGORITHM_VERSION, recommend } from "@draft-sense/recommendation";
 import { runSimulation } from "@draft-sense/simulation";
-import { teamForOverallPick } from "@draft-sense/draft-engine";
+import { nextPickForTeam } from "@draft-sense/draft-engine";
 import type { DraftSenseJob } from "@draft-sense/events";
 import { buildAppContainer } from "../container";
 import { parseEnvironment } from "../env";
@@ -24,9 +24,24 @@ async function recompute(sessionId: string, expectedVersion?: number) {
   if (!selection) return;
   const rosterPositions =
     (session.settings as { rosterPositions?: string[] }).rosterPositions ?? [];
-  const totalRounds =
-    (session.settings as { draft?: { settings?: { rounds?: number } } }).draft?.settings?.rounds ??
-    rosterPositions.length;
+  const draftContext = (
+    session.settings as {
+      draft?: {
+        settings?: { rounds?: number };
+        slotToRosterId?: Record<string, string>;
+        pickSchedule?: Array<{ overallPick: number; rosterId: string }>;
+      };
+    }
+  ).draft;
+  const totalRounds = draftContext?.settings?.rounds ?? rosterPositions.length;
+  const currentOverallPick = (session.picks.at(-1)?.overallPick ?? 0) + 1;
+  const nextOverallPick = nextPickForTeam({
+    currentOverallPick,
+    teamSlot: selection.team.slot,
+    teamCount: session.teamCount,
+    userRosterId: draftContext?.slotToRosterId?.[String(selection.team.slot)],
+    pickSchedule: draftContext?.pickSchedule,
+  });
   const players = await draftablePlayers(sessionId);
   const roster = session.picks
     .filter((pick) => pick.teamId === selection.teamId)
@@ -38,12 +53,15 @@ async function recompute(sessionId: string, expectedVersion?: number) {
       position: item.player.positions[0] ?? "WR",
       projectedPoints: item.projectedPoints,
       adp: item.adp ?? undefined,
+      tier: item.tier ?? undefined,
+      rankStdDev: item.rankStdDev ?? undefined,
     })),
     draftedPlayerIds: session.picks.map((pick) => pick.playerId),
     rosterPositions,
     roster,
     teamCount: session.teamCount,
-    currentOverallPick: session.picks.length + 1,
+    currentOverallPick,
+    nextOverallPick,
     totalRounds,
   });
   const current = await prisma.draftSession.findUnique({
@@ -70,6 +88,8 @@ async function recompute(sessionId: string, expectedVersion?: number) {
         roster,
         teamCount: session.teamCount,
         totalRounds,
+        currentOverallPick,
+        nextOverallPick,
         selectedTeamId: selection.teamId,
         datasetId: session.datasetId,
       },
@@ -99,19 +119,31 @@ async function simulate(sessionId: string, expectedVersion?: number) {
   if (!snapshot) return;
   const ranked = snapshot.result as Array<{ playerId: string; score: number }>;
   const players = await draftablePlayers(sessionId);
-  let next = session.picks.length + 1;
-  while (teamForOverallPick(next, session.teamCount) !== selection.team.slot) next += 1;
+  const draftContext = (
+    session.settings as {
+      draft?: {
+        slotToRosterId?: Record<string, string>;
+        pickSchedule?: Array<{ overallPick: number; rosterId: string }>;
+      };
+    }
+  ).draft;
+  const currentOverallPick = (session.picks.at(-1)?.overallPick ?? 0) + 1;
+  const next = nextPickForTeam({
+    currentOverallPick,
+    teamSlot: selection.team.slot,
+    teamCount: session.teamCount,
+    userRosterId: draftContext?.slotToRosterId?.[String(selection.team.slot)],
+    pickSchedule: draftContext?.pickSchedule,
+  });
   const trials = 200;
   const seed = `${sessionId}:${session.version}:${trials}`;
   const result = runSimulation({
-    candidates: ranked
-      .slice(0, 12)
-      .map((item) => ({
-        playerId: item.playerId,
-        score: item.score,
-        adp: players.find((player) => player.playerId === item.playerId)?.adp ?? undefined,
-      })),
-    picksUntilNextTurn: next - session.picks.length - 1,
+    candidates: ranked.slice(0, 12).map((item) => ({
+      playerId: item.playerId,
+      score: item.score,
+      adp: players.find((player) => player.playerId === item.playerId)?.adp ?? undefined,
+    })),
+    picksUntilNextTurn: next - currentOverallPick,
     trials,
     seed,
   });

@@ -30,7 +30,11 @@ export interface RosterPick {
 }
 
 /** Ensures a manual pick cannot make the imported lineup impossible to fill. */
-export function validateRosterPick({ position, rosterPositions, draftedPositions }: RosterPick): void {
+export function validateRosterPick({
+  position,
+  rosterPositions,
+  draftedPositions,
+}: RosterPick): void {
   const required = rosterPositions.filter((slot) => slot === position).length;
   const flexSlots = rosterPositions.filter((slot) =>
     ["FLEX", "SUPER_FLEX", "WRRB_FLEX", "REC_FLEX"].includes(slot),
@@ -48,6 +52,29 @@ export function teamForOverallPick(overallPick: number, teamCount: number): numb
   const round = Math.floor((overallPick - 1) / teamCount);
   const offset = (overallPick - 1) % teamCount;
   return round % 2 === 0 ? offset + 1 : teamCount - offset;
+}
+export interface ScheduledDraftPick {
+  overallPick: number;
+  rosterId: string;
+}
+/** Returns the next pick for a team, preferring Sleeper's traded-pick schedule when present. */
+export function nextPickForTeam(input: {
+  currentOverallPick: number;
+  teamSlot: number;
+  teamCount: number;
+  userRosterId?: string | undefined;
+  pickSchedule?: readonly ScheduledDraftPick[] | undefined;
+}): number {
+  if (input.userRosterId && input.pickSchedule) {
+    const scheduledPick = input.pickSchedule.find(
+      (pick) =>
+        pick.overallPick >= input.currentOverallPick && pick.rosterId === input.userRosterId,
+    );
+    if (scheduledPick) return scheduledPick.overallPick;
+  }
+  let overallPick = input.currentOverallPick;
+  while (teamForOverallPick(overallPick, input.teamCount) !== input.teamSlot) overallPick += 1;
+  return overallPick;
 }
 export function recordPick(
   state: DraftState,

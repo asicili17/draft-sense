@@ -1,6 +1,6 @@
 import { draftablePlayers, getDraftSession, prisma } from "@draft-sense/data-access";
 import { recommend } from "@draft-sense/recommendation";
-import { teamForOverallPick } from "@draft-sense/draft-engine";
+import { nextPickForTeam } from "@draft-sense/draft-engine";
 import { runSimulation } from "@draft-sense/simulation";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -31,6 +31,14 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
     const totalRounds =
       (session.settings as { draft?: { settings?: { rounds?: number } } }).draft?.settings
         ?.rounds ?? rosterPositions.length;
+    const draftContext = (
+      session.settings as {
+        draft?: {
+          slotToRosterId?: Record<string, string>;
+          pickSchedule?: Array<{ overallPick: number; rosterId: string }>;
+        };
+      }
+    ).draft;
     const userTeam = await requireSelectedTeam(id, user.id);
     const roster = session.picks
       .filter((pick) => pick.teamId === userTeam.id)
@@ -41,6 +49,8 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
           playerId: string;
           projectedPoints: number;
           adp: number | null;
+          tier?: number | undefined;
+          rankStdDev?: number | undefined;
           player: { fullName: string; positions: string[] };
         }) => ({
           id: item.playerId,
@@ -48,19 +58,33 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
           position: item.player.positions[0] ?? "WR",
           projectedPoints: item.projectedPoints,
           adp: item.adp ?? undefined,
+          tier: item.tier,
+          rankStdDev: item.rankStdDev,
         }),
       ),
       draftedPlayerIds: session.picks.map((pick) => pick.playerId),
       rosterPositions,
       roster,
       teamCount: session.teamCount,
-      currentOverallPick: session.picks.length + 1,
+      currentOverallPick: (session.picks.at(-1)?.overallPick ?? 0) + 1,
+      nextOverallPick: nextPickForTeam({
+        currentOverallPick: (session.picks.at(-1)?.overallPick ?? 0) + 1,
+        teamSlot: userTeam.slot,
+        teamCount: session.teamCount,
+        userRosterId: draftContext?.slotToRosterId?.[String(userTeam.slot)],
+        pickSchedule: draftContext?.pickSchedule,
+      }),
       totalRounds,
     }).slice(0, 12);
-    let nextOverallPick = session.picks.length + 1;
-    while (teamForOverallPick(nextOverallPick, session.teamCount) !== userTeam.slot)
-      nextOverallPick += 1;
-    const picksUntilNextTurn = nextOverallPick - session.picks.length - 1;
+    const currentOverallPick = (session.picks.at(-1)?.overallPick ?? 0) + 1;
+    const nextOverallPick = nextPickForTeam({
+      currentOverallPick,
+      teamSlot: userTeam.slot,
+      teamCount: session.teamCount,
+      userRosterId: draftContext?.slotToRosterId?.[String(userTeam.slot)],
+      pickSchedule: draftContext?.pickSchedule,
+    });
+    const picksUntilNextTurn = nextOverallPick - currentOverallPick;
     const seed = `${id}:${session.version}:${trials}`;
     const summary = runSimulation({
       candidates: ranked.map((item: { playerId: string; score: number }) => ({

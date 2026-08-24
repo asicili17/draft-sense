@@ -10,6 +10,18 @@ import {
 const positionSet = new Set<Position>(["QB", "RB", "WR", "TE", "K", "DST", "DL", "LB", "DB"]);
 const playerKey = (player: { fullName: string; positions: Position[] }) =>
   [normalizePlayerName(player.fullName), player.positions[0] ?? ""].join(":");
+type StoredMarketProfile = {
+  adp?: number;
+  ecr?: number;
+  tier?: number;
+  rankStdDev?: number;
+};
+const marketScoringFor = (scoringRules: Readonly<Record<string, number>>) => {
+  const receptions = scoringRules.rec ?? 0;
+  if (receptions >= 1) return "ppr";
+  if (receptions >= 0.5) return "half-ppr";
+  return "standard";
+};
 export async function importSleeperLeague(input: {
   league: LeagueSnapshot;
   draft: DraftSnapshot;
@@ -341,15 +353,24 @@ export async function draftablePlayers(sessionId: string) {
   const draftedPlayerKeys = new Set(session.picks.map((pick) => playerKey(pick.player)));
   const scoringRules =
     (session.settings as { scoringRules?: Record<string, number> }).scoringRules ?? {};
+  const marketScoring = marketScoringFor(scoringRules);
   return projections
     .filter((projection) => !draftedPlayerKeys.has(playerKey(projection.player)))
-    .map((projection) => ({
-      ...projection,
-      projectedPoints: scoreNflProjection(
-        (projection.metadata as { stats?: Record<string, number> } | null)?.stats ?? {},
-        scoringRules,
-      ),
-    }))
+    .map((projection) => {
+      const metadata = projection.metadata as {
+        stats?: Record<string, number>;
+        market?: Record<string, StoredMarketProfile>;
+      } | null;
+      const market = metadata?.market?.[marketScoring];
+      return {
+        ...projection,
+        adp: market?.adp ?? projection.adp,
+        ecr: market?.ecr,
+        tier: market?.tier,
+        rankStdDev: market?.rankStdDev,
+        projectedPoints: scoreNflProjection(metadata?.stats ?? {}, scoringRules),
+      };
+    })
     .sort((left, right) => right.projectedPoints - left.projectedPoints)
     .slice(0, 500);
 }
