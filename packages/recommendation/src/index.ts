@@ -5,10 +5,16 @@ import {
   starterDemandByPosition,
   type NflStarterPosition,
 } from "@draft-sense/roster-construction";
+import {
+  BASELINE_RECOMMENDATION_WEIGHTS,
+  RECOMMENDATION_CONFIG_VERSION,
+} from "./config";
 
 // Bump whenever the candidate pool or scoring semantics change so existing
 // immutable snapshots are never returned as though they used new logic.
-export const ALGORITHM_VERSION = "3.0.0";
+export const ALGORITHM_VERSION = `3.1.0:${RECOMMENDATION_CONFIG_VERSION}`;
+export { BASELINE_RECOMMENDATION_WEIGHTS, RECOMMENDATION_CONFIG_VERSION } from "./config";
+export { evaluateRecommendationCases } from "./evaluation";
 
 export interface RecommendationPlayer {
   id: string;
@@ -75,6 +81,36 @@ export interface Recommendation {
     simulationDownside: number;
     starterCompletion: number;
   };
+}
+
+function weightedScore(input: {
+  vorp: number;
+  scarcity: number;
+  rosterFit: number;
+  lineupGain: number;
+  adpValue: number;
+  tierDrop: number;
+  urgency: number;
+  waitCost: number;
+  risk: number;
+  simulationValue: number;
+  simulationDownside: number;
+  starterCompletion: number;
+}) {
+  const weights = BASELINE_RECOMMENDATION_WEIGHTS;
+  return (
+    input.vorp +
+    input.scarcity * weights.scarcity +
+    input.rosterFit * weights.rosterFit +
+    input.lineupGain * weights.lineupGain +
+    input.adpValue * weights.adpValue +
+    input.tierDrop * input.urgency * weights.tierDropUrgency +
+    input.waitCost * weights.waitCost -
+    input.risk * weights.risk +
+    input.simulationValue * weights.simulationValue +
+    input.simulationDownside * weights.simulationDownside +
+    input.starterCompletion * weights.starterCompletion
+  );
 }
 
 const positions = new Set<string>(NFL_STARTER_POSITIONS);
@@ -244,18 +280,20 @@ export function recommend(input: RecommendationInput): readonly Recommendation[]
             starterCompletion,
           },
           reason,
-          score:
-            vorp +
-            scarcity * 12 +
-            rosterFit * 28 +
-            lineupGain * 0.15 +
-            adpValue * 8 +
-            tierDrop * urgency * 0.2 +
-            waitCost * 0.35 -
-            risk * 8 +
-            simulationValue * 24 +
-            simulationDownside * 10 +
-            starterCompletion * 6,
+          score: weightedScore({
+            vorp,
+            scarcity,
+            rosterFit,
+            lineupGain,
+            adpValue,
+            tierDrop,
+            urgency,
+            waitCost,
+            risk,
+            simulationValue,
+            simulationDownside,
+            starterCompletion,
+          }),
         },
       ];
     })
