@@ -19,4 +19,3 @@ The server-confirmed session version is authoritative. A pending pick may be dis
 ## Constraints
 
 Keep credentials, Prisma, Redis, OpenAI, and business-rule modules server-only. Validate forms locally for usability and rely on server validation for correctness. Render explanation content as data, never executable markup. Capture client errors and connection status with request/session IDs for diagnostics.
-

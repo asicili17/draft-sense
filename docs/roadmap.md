@@ -4,7 +4,7 @@
 
 - Approve these documents and define football scoring presets, roster rules, and supported draft types.
 - Establish the application layout, CI, environment management, migrations, observability, and managed deployment.
-- Implement provider ports/adapters and automated, versioned imports for Sleeper, MySportsFeeds projections, and Fantasy Football Calculator ADP.
+- Implement provider ports/adapters and automated, versioned imports for Sleeper, FantasyPros projections, and Fantasy Football Calculator ADP.
 
 **Milestone:** a reproducible local environment can load a versioned player dataset.
 
@@ -50,3 +50,4 @@
 
 Add model calibration from outcomes only after preserving historical inputs and recommendation decisions. Support salary caps, trades, IDP, best ball, and multi-league portfolio optimization through extensions rather than changing core draft event semantics.
 
+For commercial use, replace the initial projection source with a paid, explicitly licensed data service whose terms permit the planned product, storage, and redistribution model. Preserve the same normalized `ProjectionProvider` contract so this remains a provider swap rather than a recommendation-engine rewrite.

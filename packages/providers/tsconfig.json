@@ -1,1 +1,9 @@
-{ "extends": "../../tsconfig.base.json", "compilerOptions": { "module": "esnext", "moduleResolution": "bundler", "declaration": true }, "include": ["src/**/*.ts"] }
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "declaration": true
+  },
+  "include": ["src/**/*.ts"]
+}

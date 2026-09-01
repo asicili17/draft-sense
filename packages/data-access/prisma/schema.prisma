@@ -42,10 +42,28 @@ enum ProviderImportStatus {
 
 model User {
   id String @id @default(uuid()) @db.Uuid
+  clerkUserId String? @unique
   email String @unique
   displayName String
   leagues League[] @relation("LeagueOwner")
   sessions DraftSession[] @relation("SessionOwner")
+  teamSelections UserDraftTeamSelection[]
+  platformAccounts UserPlatformAccount[]
+}
+model UserPlatformAccount {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  provider String
+  externalUserId String
+  username String
+  metadata Json?
+  lastSyncedAt DateTime?
+  connectedAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([userId, provider])
+  @@unique([provider, externalUserId])
+  @@index([provider, externalUserId])
 }
 model League {
   id String @id @default(uuid()) @db.Uuid
@@ -55,6 +73,7 @@ model League {
   owner User @relation("LeagueOwner", fields: [ownerId], references: [id], onDelete: Restrict)
   integrations LeagueIntegration[]
   sessions DraftSession[]
+  @@unique([ownerId, name])
 }
 model LeagueIntegration {
   id String @id @default(uuid()) @db.Uuid
@@ -144,12 +163,17 @@ model DraftSession {
   teamCount Int
   settings Json
   version Int @default(0)
+  lastViewedAt DateTime @default(now())
   league League? @relation(fields: [leagueId], references: [id], onDelete: Restrict)
   owner User @relation("SessionOwner", fields: [ownerId], references: [id], onDelete: Restrict)
   dataset ProjectionDataset @relation(fields: [datasetId], references: [id], onDelete: Restrict)
   scoringFormat ScoringFormat @relation(fields: [scoringFormatId], references: [id], onDelete: Restrict)
   teams DraftTeam[]
   picks DraftPick[]
+  recommendations RecommendationSnapshot[]
+  simulations SimulationRun[]
+  outboxEvents OutboxEvent[]
+  teamSelections UserDraftTeamSelection[]
 }
 model DraftTeam {
   id String @id @default(uuid()) @db.Uuid
@@ -158,7 +182,21 @@ model DraftTeam {
   name String
   session DraftSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   picks DraftPick[]
+  selections UserDraftTeamSelection[]
   @@unique([sessionId, slot])
+}
+model UserDraftTeamSelection {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  sessionId String @db.Uuid
+  teamId String @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session DraftSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  team DraftTeam @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  @@unique([userId, sessionId])
+  @@index([sessionId, teamId])
 }
 model DraftPick {
   id String @id @default(uuid()) @db.Uuid
@@ -168,9 +206,53 @@ model DraftPick {
   teamId String @db.Uuid
   playerId String @db.Uuid
   source PickSource
+  idempotencyKey String?
   session DraftSession @relation(fields: [sessionId], references: [id], onDelete: Restrict)
   team DraftTeam @relation(fields: [teamId], references: [id], onDelete: Restrict)
   player Player @relation(fields: [playerId], references: [id], onDelete: Restrict)
   @@unique([sessionId, overallPick])
   @@unique([sessionId, playerId])
+  @@unique([sessionId, idempotencyKey])
+}
+model RecommendationSnapshot {
+  id String @id @default(uuid()) @db.Uuid
+  sessionId String @db.Uuid
+  sessionVersion Int
+  algorithmVersion String
+  input Json
+  result Json
+  createdAt DateTime @default(now())
+  session DraftSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  @@unique([sessionId, sessionVersion, algorithmVersion])
+  @@index([sessionId, createdAt])
+}
+model SimulationRun {
+  id String @id @default(uuid()) @db.Uuid
+  sessionId String @db.Uuid
+  sessionVersion Int
+  seed String
+  trials Int
+  result Json
+  createdAt DateTime @default(now())
+  session DraftSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  @@unique([sessionId, sessionVersion, seed])
+}
+model OutboxEvent {
+  id String @id @default(uuid()) @db.Uuid
+  sessionId String @db.Uuid
+  type String
+  payload Json
+  createdAt DateTime @default(now())
+  processedAt DateTime?
+  availableAt DateTime @default(now())
+  leasedUntil DateTime?
+  leaseToken String?
+  attempts Int @default(0)
+  lastError String?
+  queueMessageId String?
+  deadLetteredAt DateTime?
+  session DraftSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  @@index([processedAt, availableAt, createdAt])
+  @@index([leasedUntil])
+  @@index([deadLetteredAt])
 }

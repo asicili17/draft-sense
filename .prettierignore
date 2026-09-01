@@ -1,0 +1,5 @@
+node_modules
+packages/data-access/prisma/migrations/**
+.next
+coverage
+*.tsbuildinfo

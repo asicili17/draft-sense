@@ -12,9 +12,8 @@ Jobs include deduplication keys derived from session version, algorithm version,
 
 ## Ingestion workers
 
-Provider data is staged, validated, normalized to canonical players, and published as an immutable projection dataset only after completeness checks pass. Failed imports retain diagnostics and do not change active datasets. Provider credentials remain in worker/server configuration and never appear in events. Initial jobs use Sleeper for draft snapshots, MySportsFeeds for projected stat lines, and Fantasy Football Calculator for daily ADP.
+Provider data is staged, validated, normalized to canonical players, and published as an immutable projection dataset only after completeness checks pass. Failed imports retain diagnostics and do not change active datasets. Provider credentials remain in worker/server configuration and never appear in events. Initial jobs use Sleeper for draft snapshots, FantasyPros for projected stat lines, and Fantasy Football Calculator for daily ADP. A future commercial deployment swaps the projection adapter for a paid, explicitly licensed source.
 
 ## Operations
 
 Workers are horizontally scalable and have bounded concurrency, timeouts, retries with backoff, and dead-letter handling. Track queue depth, job duration, retry count, simulation throughput, and dataset freshness. Jobs are idempotent and must tolerate redelivery and process restarts.
-

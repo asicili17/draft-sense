@@ -17,4 +17,3 @@ Define interfaces here or in the consuming domain package for repositories, tran
 ## Constraints
 
 Application services may read a cached derived result but always fall back to durable/versioned inputs. They must preserve audit fields, propagate correlation IDs, and be safe to retry. They cannot let an explanation call delay or alter a pick transaction.
-

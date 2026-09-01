@@ -21,4 +21,3 @@ Model roster slots, starters, bench, flex eligibility, maximums, and configurabl
 ## Performance
 
 Run simulations asynchronously in workers. Cache by session version, dataset version, algorithm version, simulation configuration, and candidate set. Reuse common simulated draft prefixes across candidates, precompute eligible-player arrays, use compact numeric representations, and parallelize independent trial batches. Start with a fast default budget (for example 1,000 trials), increase adaptively when candidates are close, and publish a preliminary deterministic result while simulations run. Set deadlines and return the most recent completed summary rather than blocking the draft UI.
-

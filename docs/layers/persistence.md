@@ -17,4 +17,3 @@ Redis keys hold cacheable recommendation/simulation results, rate limits, locks,
 ## Constraints
 
 Adapters translate database/provider exceptions into typed infrastructure errors and do not decide business policy. No Redis state is required to reconstruct draft history. Connections are managed by the server composition root and instrumented for pool saturation, latency, failures, and cache hit rate.
-

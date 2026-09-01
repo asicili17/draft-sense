@@ -21,4 +21,3 @@ The domain depends only on TypeScript language/runtime primitives and carefully 
 ## Extension
 
 New sports implement sport policies for player eligibility, roster construction, scoring, projection translation, and opponent defaults. They do not alter generic draft event semantics. This preserves a stable core while allowing football-specific rules to evolve independently.
-
