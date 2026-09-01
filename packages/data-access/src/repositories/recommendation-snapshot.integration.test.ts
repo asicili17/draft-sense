@@ -1,17 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "../prisma";
-
-async function clearDatabase() {
-  await prisma.outboxEvent.deleteMany();
-  await prisma.userDraftTeamSelection.deleteMany();
-  await prisma.recommendationSnapshot.deleteMany();
-  await prisma.draftPick.deleteMany();
-  await prisma.draftTeam.deleteMany();
-  await prisma.draftSession.deleteMany();
-  await prisma.scoringFormat.deleteMany();
-  await prisma.projectionDataset.deleteMany();
-  await prisma.user.deleteMany();
-}
+import { clearDatabase } from "../test-utils/clear-database";
 
 describe("recommendation snapshot persistence", () => {
   beforeEach(clearDatabase);

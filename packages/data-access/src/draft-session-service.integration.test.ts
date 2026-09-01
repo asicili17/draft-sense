@@ -2,22 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import type { DraftSnapshot, LeagueSnapshot } from "@draft-sense/providers";
 import { importSleeperLeague } from "./draft-session-service";
 import { prisma } from "./prisma";
-
-async function clearDatabase() {
-  await prisma.outboxEvent.deleteMany();
-  await prisma.userDraftTeamSelection.deleteMany();
-  await prisma.recommendationSnapshot.deleteMany();
-  await prisma.draftPick.deleteMany();
-  await prisma.draftTeam.deleteMany();
-  await prisma.draftSession.deleteMany();
-  await prisma.playerExternalIdentity.deleteMany();
-  await prisma.player.deleteMany();
-  await prisma.scoringFormat.deleteMany();
-  await prisma.projectionDataset.deleteMany();
-  await prisma.leagueIntegration.deleteMany();
-  await prisma.league.deleteMany();
-  await prisma.user.deleteMany();
-}
+import { clearDatabase } from "./test-utils/clear-database";
 
 const source = {
   league: {

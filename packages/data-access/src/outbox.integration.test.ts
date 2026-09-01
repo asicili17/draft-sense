@@ -1,6 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { claimOutboxEvents, markOutboxDelivered, releaseOutboxEvent } from "./outbox";
 import { prisma } from "./prisma";
+import { clearDatabase } from "./test-utils/clear-database";
 
 async function sessionId() {
   const user = await prisma.user.create({ data: { email: "outbox@draftsense.test", displayName: "Outbox" } });
@@ -10,13 +11,7 @@ async function sessionId() {
   return session.id;
 }
 
-beforeEach(async () => {
-  await prisma.outboxEvent.deleteMany();
-  await prisma.draftSession.deleteMany();
-  await prisma.scoringFormat.deleteMany();
-  await prisma.projectionDataset.deleteMany();
-  await prisma.user.deleteMany();
-});
+beforeEach(clearDatabase);
 afterAll(() => prisma.$disconnect());
 
 describe("durable outbox", () => {

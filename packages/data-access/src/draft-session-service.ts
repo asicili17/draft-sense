@@ -161,7 +161,7 @@ export async function importSleeperLeague(input: {
       : await tx.draftSession.create({
           data: {
             leagueId: league.id,
-            ownerId: league.ownerId,
+            ownerId: input.ownerId,
             datasetId: dataset.id,
             scoringFormatId: scoring.id,
             sport: "NFL",
