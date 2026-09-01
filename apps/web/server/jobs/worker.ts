@@ -3,10 +3,11 @@ import {
   getDraftSession,
   importSleeperLeague,
   prisma,
+  scoreNflProjection,
 } from "@draft-sense/data-access";
 import { ALGORITHM_VERSION, recommend } from "@draft-sense/recommendation";
-import { runSimulation } from "@draft-sense/simulation";
-import { nextPickForTeam } from "@draft-sense/draft-engine";
+import { runRosterSimulation } from "@draft-sense/simulation";
+import { nextPickForTeam, teamForOverallPick } from "@draft-sense/draft-engine";
 import type { DraftSenseJob } from "@draft-sense/events";
 import { buildAppContainer } from "../container";
 import { parseEnvironment } from "../env";
@@ -119,9 +120,12 @@ async function simulate(sessionId: string, expectedVersion?: number) {
   if (!snapshot) return;
   const ranked = snapshot.result as Array<{ playerId: string; score: number }>;
   const players = await draftablePlayers(sessionId);
+  const rosterPositions =
+    (session.settings as { rosterPositions?: string[] }).rosterPositions ?? [];
   const draftContext = (
     session.settings as {
       draft?: {
+        settings?: { rounds?: number };
         slotToRosterId?: Record<string, string>;
         pickSchedule?: Array<{ overallPick: number; rosterId: string }>;
       };
@@ -135,15 +139,83 @@ async function simulate(sessionId: string, expectedVersion?: number) {
     userRosterId: draftContext?.slotToRosterId?.[String(selection.team.slot)],
     pickSchedule: draftContext?.pickSchedule,
   });
-  const trials = 200;
+  const totalRounds = draftContext?.settings?.rounds ?? rosterPositions.length;
+  const playerPool = players.slice(0, 200).map((player) => ({
+    id: player.playerId,
+    positions: player.player.positions,
+    position: player.player.positions[0] ?? "WR",
+    projectedPoints: player.projectedPoints,
+    adp: player.adp ?? undefined,
+    tier: player.tier ?? undefined,
+  }));
+  const playerPoolById = new Map(playerPool.map((player) => [player.id, player]));
+  const candidates = ranked
+    .slice(0, 8)
+    .map((item) => playerPoolById.get(item.playerId))
+    .filter((player): player is NonNullable<typeof player> => Boolean(player));
+  if (!candidates.length) return;
+  const draftedProjections = await prisma.playerProjection.findMany({
+    where: { datasetId: session.datasetId, playerId: { in: session.picks.map((pick) => pick.playerId) } },
+    select: { playerId: true, metadata: true },
+  });
+  const scoringRules =
+    (session.settings as { scoringRules?: Record<string, number> }).scoringRules ?? {};
+  const draftedPoints = new Map(
+    draftedProjections.map((projection) => [
+      projection.playerId,
+      scoreNflProjection(
+        ((projection.metadata as { stats?: Record<string, number> } | null)?.stats ?? {}),
+        scoringRules,
+      ),
+    ]),
+  );
+  const teamIdByRosterId = new Map(
+    session.teams.flatMap((team) => {
+      const rosterId = draftContext?.slotToRosterId?.[String(team.slot)];
+      return rosterId ? [[rosterId, team.id] as const] : [];
+    }),
+  );
+  const scheduledTeamIds = new Map(
+    (draftContext?.pickSchedule ?? []).flatMap((pick) => {
+      const teamId = teamIdByRosterId.get(pick.rosterId);
+      return teamId ? [[pick.overallPick, teamId] as const] : [];
+    }),
+  );
+  const futurePickTeamIds = Array.from(
+    { length: Math.max(0, totalRounds * session.teamCount - currentOverallPick + 1) },
+    (_, offset) => {
+      const overallPick = currentOverallPick + offset;
+      return (
+        scheduledTeamIds.get(overallPick) ??
+        session.teams.find(
+          (team) => team.slot === teamForOverallPick(overallPick, session.teamCount),
+        )?.id
+      );
+    },
+  ).filter((teamId): teamId is string => Boolean(teamId));
+  const teams = session.teams.map((team) => ({
+    id: team.id,
+    // Already drafted players establish both positional eligibility and the fixed
+    // portion of the projected starting lineup in every candidate path.
+    roster: session.picks
+      .filter((pick) => pick.teamId === team.id)
+      .map((pick) => ({
+        id: pick.playerId,
+        positions: pick.player.positions,
+        position: pick.player.positions[0] ?? "WR",
+        projectedPoints: draftedPoints.get(pick.playerId) ?? 0,
+      })),
+  }));
+  const trials = 120;
   const seed = `${sessionId}:${session.version}:${trials}`;
-  const result = runSimulation({
-    candidates: ranked.slice(0, 12).map((item) => ({
-      playerId: item.playerId,
-      score: item.score,
-      adp: players.find((player) => player.playerId === item.playerId)?.adp ?? undefined,
-    })),
-    picksUntilNextTurn: next - currentOverallPick,
+  const result = runRosterSimulation({
+    candidates,
+    playerPool,
+    teams,
+    userTeamId: selection.teamId,
+    rosterPositions,
+    futurePickTeamIds,
+    currentOverallPick,
     trials,
     seed,
   });
@@ -152,6 +224,32 @@ async function simulate(sessionId: string, expectedVersion?: number) {
     select: { version: true },
   });
   if (!current || current.version !== session.version) return;
+  const roster = session.picks
+    .filter((pick) => pick.teamId === selection.teamId)
+    .flatMap((pick) => pick.player.positions);
+  const reranked = recommend({
+    players: players.map((item) => ({
+      id: item.playerId,
+      name: item.player.fullName,
+      position: item.player.positions[0] ?? "WR",
+      projectedPoints: item.projectedPoints,
+      adp: item.adp ?? undefined,
+      tier: item.tier ?? undefined,
+      rankStdDev: item.rankStdDev ?? undefined,
+    })),
+    draftedPlayerIds: session.picks.map((pick) => pick.playerId),
+    rosterPositions,
+    roster,
+    teamCount: session.teamCount,
+    currentOverallPick,
+    nextOverallPick: next,
+    totalRounds,
+    simulation: result,
+  });
+  await prisma.recommendationSnapshot.update({
+    where: { id: snapshot.id },
+    data: { result: JSON.parse(JSON.stringify(reranked)) },
+  });
   await prisma.simulationRun.upsert({
     where: { sessionId_sessionVersion_seed: { sessionId, sessionVersion: session.version, seed } },
     update: { result: JSON.parse(JSON.stringify(result)), trials },
@@ -162,6 +260,11 @@ async function simulate(sessionId: string, expectedVersion?: number) {
       trials,
       result: JSON.parse(JSON.stringify(result)),
     },
+  });
+  await publishDraftUpdate({
+    type: "recommendations.updated",
+    sessionId,
+    sessionVersion: session.version,
   });
   await publishDraftUpdate({
     type: "simulation.updated",

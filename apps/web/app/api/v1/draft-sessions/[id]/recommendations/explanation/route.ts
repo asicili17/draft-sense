@@ -60,6 +60,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
             tierDrop: z.number(),
             waitCost: z.number(),
             risk: z.number(),
+            simulationValue: z.number().default(0),
+            simulationDownside: z.number().default(0),
+            starterCompletion: z.number().default(0),
           }),
         }),
       )

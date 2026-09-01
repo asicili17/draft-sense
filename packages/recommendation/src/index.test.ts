@@ -116,4 +116,22 @@ describe("recommend", () => {
     });
     expect(result?.factors.adpValue).toBe(1);
   });
+
+  it("uses roster simulation outcomes to break otherwise close choices", () => {
+    const results = recommend({
+      players: [
+        { id: "wr", name: "WR", position: "WR", projectedPoints: 220 },
+        { id: "rb", name: "RB", position: "RB", projectedPoints: 220 },
+      ],
+      draftedPlayerIds: [],
+      rosterPositions: ["RB", "WR"],
+      roster: [],
+      simulation: [
+        { playerId: "wr", expectedStarterValue: 400, downsideStarterValue: 380, starterCompletionProbability: 1 },
+        { playerId: "rb", expectedStarterValue: 360, downsideStarterValue: 330, starterCompletionProbability: 0.8 },
+      ],
+    });
+    expect(results[0]?.playerId).toBe("wr");
+    expect(results[0]?.reason).toContain("Simulation projects");
+  });
 });

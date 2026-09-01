@@ -8,7 +8,7 @@ import {
 
 // Bump whenever the candidate pool or scoring semantics change so existing
 // immutable snapshots are never returned as though they used new logic.
-export const ALGORITHM_VERSION = "2.1.0";
+export const ALGORITHM_VERSION = "3.0.0";
 
 export interface RecommendationPlayer {
   id: string;
@@ -30,6 +30,15 @@ export interface RecommendationInput {
   currentOverallPick?: number | undefined;
   nextOverallPick?: number | undefined;
   totalRounds?: number | undefined;
+  simulation?: readonly SimulationOutcome[] | undefined;
+}
+
+/** Aggregate outcomes from roster-aware draft simulations for this exact pick. */
+export interface SimulationOutcome {
+  playerId: string;
+  expectedStarterValue: number;
+  downsideStarterValue: number;
+  starterCompletionProbability: number;
 }
 
 export interface Recommendation {
@@ -48,6 +57,9 @@ export interface Recommendation {
     tierDrop: number;
     waitCost: number;
     risk: number;
+    simulationValue: number;
+    simulationDownside: number;
+    starterCompletion: number;
   };
   normalizedFactors: {
     vorp: number;
@@ -59,6 +71,9 @@ export interface Recommendation {
     tierDrop: number;
     waitCost: number;
     risk: number;
+    simulationValue: number;
+    simulationDownside: number;
+    starterCompletion: number;
   };
 }
 
@@ -130,6 +145,18 @@ export function recommend(input: RecommendationInput): readonly Recommendation[]
   const nextOverallPick = Math.max(currentOverallPick, input.nextOverallPick ?? currentOverallPick);
   const draftProgress = currentOverallPick / Math.max(1, teamCount * totalRounds);
   const demand = starterDemandByPosition(input.rosterPositions, teamCount);
+  const simulationByPlayer = new Map(input.simulation?.map((outcome) => [outcome.playerId, outcome]));
+  const simulatedValues = [...simulationByPlayer.values()];
+  const simulationValueRange = {
+    min: Math.min(...simulatedValues.map((outcome) => outcome.expectedStarterValue), 0),
+    max: Math.max(...simulatedValues.map((outcome) => outcome.expectedStarterValue), 0),
+  };
+  const simulationDownsideRange = {
+    min: Math.min(...simulatedValues.map((outcome) => outcome.downsideStarterValue), 0),
+    max: Math.max(...simulatedValues.map((outcome) => outcome.downsideStarterValue), 0),
+  };
+  const normalizeSimulation = (value: number, range: { min: number; max: number }) =>
+    range.max === range.min ? 0 : (value - range.min) / (range.max - range.min);
   const availableByPosition = new Map<NflStarterPosition, RecommendationPlayer[]>();
   for (const position of NFL_STARTER_POSITIONS)
     availableByPosition.set(
@@ -177,6 +204,14 @@ export function recommend(input: RecommendationInput): readonly Recommendation[]
       const tierDrop = tierDropFor(player, availableByPosition);
       const waitCost = urgency * (Math.max(0, vorp) + lineupGain + tierDrop);
       const risk = player.risk ?? 0;
+      const simulation = simulationByPlayer.get(player.id);
+      const simulationValue = simulation
+        ? normalizeSimulation(simulation.expectedStarterValue, simulationValueRange)
+        : 0;
+      const simulationDownside = simulation
+        ? normalizeSimulation(simulation.downsideStarterValue, simulationDownsideRange)
+        : 0;
+      const starterCompletion = simulation?.starterCompletionProbability ?? 0;
       const rosterReason = reasonFor({
         fillsStarter,
         player,
@@ -184,7 +219,9 @@ export function recommend(input: RecommendationInput): readonly Recommendation[]
         unsupportedSlots: currentRoster.unsupportedSlots,
       });
       const reason =
-        availability !== undefined && urgency >= 0.65
+        simulation && simulationValue >= 0.9
+          ? `Simulation projects the strongest completed starting lineup. ${rosterReason}`
+          : availability !== undefined && urgency >= 0.65
           ? `Take now: only ${Math.round(availability * 100)}% likely to reach pick ${nextOverallPick}. ${rosterReason}`
           : adpValue >= 0.5
             ? `Falling past ADP. ${rosterReason}`
@@ -202,6 +239,9 @@ export function recommend(input: RecommendationInput): readonly Recommendation[]
             tierDrop,
             waitCost,
             risk,
+            simulationValue,
+            simulationDownside,
+            starterCompletion,
           },
           reason,
           score:
@@ -212,7 +252,10 @@ export function recommend(input: RecommendationInput): readonly Recommendation[]
             adpValue * 8 +
             tierDrop * urgency * 0.2 +
             waitCost * 0.35 -
-            risk * 8,
+            risk * 8 +
+            simulationValue * 24 +
+            simulationDownside * 10 +
+            starterCompletion * 6,
         },
       ];
     })
@@ -243,6 +286,9 @@ export function recommend(input: RecommendationInput): readonly Recommendation[]
       tierDrop: Number((item.factors.tierDrop / maxTierDrop).toFixed(3)),
       waitCost: Number((item.factors.waitCost / maxWaitCost).toFixed(3)),
       risk: Number(item.factors.risk.toFixed(3)),
+      simulationValue: Number(item.factors.simulationValue.toFixed(3)),
+      simulationDownside: Number(item.factors.simulationDownside.toFixed(3)),
+      starterCompletion: Number(item.factors.starterCompletion.toFixed(3)),
     },
   }));
 }
