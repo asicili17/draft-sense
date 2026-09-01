@@ -116,10 +116,16 @@ export async function importSleeperLeague(input: {
           version: "waiting-for-projections",
         },
       }));
+    // Sleeper roster IDs are opaque strings (for example, `roster-1`), not
+    // numeric team counts. Passing one through Number() turns the entire
+    // Math.max call into NaN and later produces a misleading Prisma error.
+    const numericRosterIds = input.draft.picks
+      .map((pick) => Number(pick.rosterId))
+      .filter(Number.isFinite);
     const teamCount = Math.max(
       input.draft.settings?.teams ?? 0,
       input.draft.teams.length,
-      ...input.draft.picks.map((pick) => Number(pick.rosterId)),
+      ...numericRosterIds,
       2,
     );
     const settings = {
@@ -160,10 +166,10 @@ export async function importSleeperLeague(input: {
         })
       : await tx.draftSession.create({
           data: {
-            leagueId: league.id,
-            ownerId: input.ownerId,
-            datasetId: dataset.id,
-            scoringFormatId: scoring.id,
+            league: { connect: { id: league.id } },
+            owner: { connect: { id: input.ownerId } },
+            dataset: { connect: { id: dataset.id } },
+            scoringFormat: { connect: { id: scoring.id } },
             sport: "NFL",
             status: input.draft.status === "complete" ? "COMPLETE" : "LIVE",
             draftType: "SNAKE",

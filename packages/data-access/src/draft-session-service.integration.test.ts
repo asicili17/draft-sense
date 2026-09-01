@@ -84,6 +84,23 @@ describe("Sleeper session import", () => {
     });
   });
 
+  it("uses team data when Sleeper roster IDs are non-numeric", async () => {
+    const owner = await prisma.user.create({
+      data: { email: "opaque-roster-id@draftsense.test", displayName: "Opaque roster ID owner" },
+    });
+    const session = await importSleeperLeague({
+      ...source,
+      ownerId: owner.id,
+      selectedTeamSlot: 1,
+      draft: {
+        ...source.draft,
+        settings: { rounds: 16 },
+        picks: [],
+      },
+    });
+    expect(session?.teamCount).toBe(2);
+  });
+
   it("links a Sleeper pick to an unambiguous canonical player", async () => {
     const owner = await prisma.user.create({
       data: { email: "matched-import@draftsense.test", displayName: "Matched import owner" },
