@@ -75,7 +75,10 @@ describe("Sleeper session import", () => {
     expect(session?.settings).toMatchObject({
       draft: {
         settings: { teams: 2, rounds: 16, pickTimer: 90 },
-        pickSchedule: [{ overallPick: 1, rosterId: "roster-1" }],
+        pickSchedule: [
+          { overallPick: 1, rosterId: "roster-1" },
+          { overallPick: 2, rosterId: "roster-2" },
+        ],
         tradedPicks: [{ round: 2, currentRosterId: "roster-2" }],
       },
     });
