@@ -4,7 +4,7 @@ import * as Accordion from "@radix-ui/react-accordion";
 import * as Dialog from "@radix-ui/react-dialog";
 import { UserButton } from "@clerk/nextjs";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { shouldRefetchForRealtimeEvent } from "../features/draft/realtime";
 import { useDraftRealtime } from "../features/draft/realtime-client";
 import type { DraftRealtimeEvent } from "@draft-sense/events";
@@ -25,8 +25,20 @@ type Session = {
   version: number;
   selectedTeamId: string | null;
   teams: { id: string; name: string; slot: number }[];
-  picks: { overallPick: number; player: { fullName: string }; team: { name: string } }[];
+  picks: {
+    overallPick: number;
+    player: { fullName: string; team?: string | null; positions: string[] };
+    team: { id: string; name: string };
+  }[];
   settings?: { source?: { leagueId?: string; draftId?: string } };
+};
+type AvailablePlayer = {
+  id: string;
+  name: string;
+  team?: string | null;
+  positions: string[];
+  projectedPoints: number;
+  adp?: number | null;
 };
 type SavedDraftRoom = {
   sessionId: string;
@@ -49,6 +61,10 @@ export function DraftAssistant() {
   const [source, setSource] = useState<{ leagueId: string; draftId: string } | null>(null);
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
   const [savedRooms, setSavedRooms] = useState<SavedDraftRoom[]>([]);
+  const [availablePlayers, setAvailablePlayers] = useState<AvailablePlayer[]>([]);
+  const [railView, setRailView] = useState<"recommendations" | "players">("recommendations");
+  const [playerQuery, setPlayerQuery] = useState("");
+  const [playerPosition, setPlayerPosition] = useState("ALL");
   const sessionVersionRef = useRef(0);
   const refreshInFlightRef = useRef(new Map<string, Promise<void>>());
 
@@ -72,6 +88,14 @@ export function DraftAssistant() {
       setRecommendations(recommendationPayload.data.recommendations);
       setSnapshotId(recommendationPayload.data.snapshotId);
     }
+  }, []);
+
+  const refreshAvailablePlayers = useCallback(async (id: string) => {
+    const response = await fetch(`/api/v1/draft-sessions/${id}/available-players`, {
+      cache: "no-store",
+    });
+    const payload = await response.json();
+    if (response.ok) setAvailablePlayers(payload.data);
   }, []);
 
   const refresh = useCallback(
@@ -181,6 +205,45 @@ export function DraftAssistant() {
         setMessage("Could not start live Sleeper updates. Please try reopening the room.");
     });
   }, [session?.id]);
+
+  useEffect(() => {
+    if (!session) return;
+    void refreshAvailablePlayers(session.id);
+  }, [refreshAvailablePlayers, session?.id, session?.version]);
+
+  const boardRounds = useMemo(() => {
+    if (!session) return [];
+    const teamCount = session.teams.length;
+    const currentRound = Math.ceil((session.picks.length + 1) / teamCount);
+    return Array.from({ length: Math.max(8, currentRound + 3) }, (_, index) => index + 1);
+  }, [session]);
+
+  const filteredAvailablePlayers = useMemo(() => {
+    const query = playerQuery.trim().toLocaleLowerCase();
+    return availablePlayers
+      .filter((player) => playerPosition === "ALL" || player.positions.includes(playerPosition))
+      .filter(
+        (player) =>
+          !query ||
+          player.name.toLocaleLowerCase().includes(query) ||
+          player.team?.toLocaleLowerCase().includes(query),
+      )
+      .slice(0, 80);
+  }, [availablePlayers, playerPosition, playerQuery]);
+
+  const draftPickAt = useCallback(
+    (round: number, teamIndex: number) => {
+      if (!session) return undefined;
+      const teamCount = session.teams.length;
+      const overallPick =
+        (round - 1) * teamCount + (round % 2 === 1 ? teamIndex + 1 : teamCount - teamIndex);
+      return {
+        overallPick,
+        pick: session.picks.find((item) => item.overallPick === overallPick),
+      };
+    },
+    [session],
+  );
 
   const loadLeagueTeams = async (league: League) => {
     if (!league.draftId || leagueTeams[league.externalLeagueId]) return;
@@ -416,88 +479,196 @@ export function DraftAssistant() {
             <div className="draft-room">
               <div className="room-header">
                 <div>
-                  <p className="eyebrow">Live draft room</p>
-                  <h2>
-                    {session.teams.length} teams · board v{session.version}
-                  </h2>
+                  <p className="eyebrow">Draft room</p>
+                  <h2>{session.teams.length}-team live board</h2>
                   <small className="realtime-status">
                     {realtime.status === "connected"
-                      ? "Live updates connected"
-                      : "Live updates reconnecting; polling remains active"}
+                      ? "Sleeper sync connected"
+                      : "Sleeper sync reconnecting"}
+                    {" · "}draft data refreshes every 10 seconds
                   </small>
                 </div>
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={() => void refreshFromSleeper()}
-                  disabled={!source}
-                >
-                  Refresh
-                </button>
-              </div>
-              <label className="team-select">
-                My draft team
-                <select
-                  value={session.selectedTeamId ?? ""}
-                  onChange={(event) => void selectTeam(event.target.value)}
-                >
-                  <option value="" disabled>
-                    Select your team
-                  </option>
-                  {session.teams.map((team) => (
-                    <option key={team.id} value={team.id}>
-                      {team.name} (slot {team.slot})
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div className="room-columns">
-                <section className="draft-board">
-                  <h3>Draft board</h3>
-                  {session.picks.length ? (
-                    <ol>
-                      {[...session.picks].reverse().map((pick) => (
-                        <li key={pick.overallPick}>
-                          <span>{pick.overallPick}</span>
-                          <strong>{pick.player.fullName}</strong>
-                          <small>{pick.team.name}</small>
-                        </li>
+                <div className="room-header-actions">
+                  <label className="team-select">
+                    My team
+                    <select
+                      value={session.selectedTeamId ?? ""}
+                      onChange={(event) => void selectTeam(event.target.value)}
+                    >
+                      <option value="" disabled>
+                        Select your team
+                      </option>
+                      {session.teams.map((team) => (
+                        <option key={team.id} value={team.id}>
+                          {team.name} (slot {team.slot})
+                        </option>
                       ))}
-                    </ol>
-                  ) : (
-                    <p>No picks have been recorded.</p>
-                  )}
-                </section>
-                <section className="recommendations">
-                  <h3>On the clock</h3>
-                  {recommendations.slice(0, 5).map((item) => (
-                    <article key={item.playerId}>
-                      <strong>{item.name}</strong>
-                      <span>
-                        Score {item.score} · {Math.round(item.confidence * 100)}% confidence
-                      </span>
-                      <small>
-                        {item.reason} VORP {item.factors.vorp.toFixed(1)} · roster fit{" "}
-                        {item.factors.rosterFit.toFixed(2)}
-                      </small>
-                      <div>
-                        <button
-                          type="button"
-                          className="secondary"
-                          onClick={() => void explain(item.playerId)}
-                          disabled={Boolean(explainingPlayerId)}
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => void refreshFromSleeper()}
+                    disabled={!source}
+                  >
+                    Refresh now
+                  </button>
+                </div>
+              </div>
+              <div className="draft-workspace">
+                <section className="draft-board" aria-label="Draft board">
+                  <div className="board-heading">
+                    <div>
+                      <p className="eyebrow">Draft board</p>
+                      <h3>Every team, every pick</h3>
+                    </div>
+                    <span>{session.picks.length} picks recorded</span>
+                  </div>
+                  <div className="board-scroll">
+                    <div className="draft-grid" style={{ "--team-count": session.teams.length } as CSSProperties}>
+                      <div className="round-corner">Round</div>
+                      {session.teams.map((team) => (
+                        <div
+                          className={`team-column-heading ${team.id === session.selectedTeamId ? "is-my-team" : ""}`}
+                          key={team.id}
                         >
-                          {explainingPlayerId === item.playerId ? "Loading…" : "Why?"}
-                        </button>
-                      </div>
-                    </article>
-                  ))}
-                  <p className="message">
-                    Picks are made in Sleeper. DraftSense updates recommendations after it detects
-                    the latest Sleeper draft board.
-                  </p>
-                  {explanation && <p className="explanation">{explanation}</p>}
+                          <span>{team.slot.toString().padStart(2, "0")}</span>
+                          <strong>{team.name}</strong>
+                        </div>
+                      ))}
+                      {boardRounds.map((round) => (
+                        <div className="draft-grid-row" key={round}>
+                          <div className="round-label">R{round}</div>
+                          {session.teams.map((team, teamIndex) => {
+                            const scheduled = draftPickAt(round, teamIndex);
+                            const pick = scheduled?.pick;
+                            const isCurrent = scheduled?.overallPick === session.picks.length + 1;
+                            const position = pick?.player.positions[0] ?? "";
+                            return (
+                              <article
+                                className={`pick-card ${position ? `position-${position.toLowerCase()}` : ""} ${
+                                  team.id === session.selectedTeamId ? "is-my-team" : ""
+                                } ${isCurrent ? "is-current-pick" : ""}`}
+                                key={`${round}-${team.id}`}
+                              >
+                                {pick ? (
+                                  <>
+                                    <div className="pick-card-topline">
+                                      <span>{scheduled?.overallPick}</span>
+                                      <b>{position}</b>
+                                    </div>
+                                    <strong>{pick.player.fullName}</strong>
+                                    <small>{pick.player.team ?? "NFL"}</small>
+                                  </>
+                                ) : isCurrent ? (
+                                  <>
+                                    <span className="current-pick-label">On the clock</span>
+                                    <strong>{team.id === session.selectedTeamId ? "Your pick" : team.name}</strong>
+                                    <small>Waiting for Sleeper sync</small>
+                                  </>
+                                ) : (
+                                  <span className="empty-pick">{scheduled?.overallPick}</span>
+                                )}
+                              </article>
+                            );
+                          })}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </section>
+                <aside className="draft-rail" aria-label="Draft assistant">
+                  <div className="rail-tabs" role="tablist" aria-label="Draft assistant views">
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={railView === "recommendations"}
+                      className={railView === "recommendations" ? "is-active" : ""}
+                      onClick={() => setRailView("recommendations")}
+                    >
+                      Recommendations
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={railView === "players"}
+                      className={railView === "players" ? "is-active" : ""}
+                      onClick={() => setRailView("players")}
+                    >
+                      All players <span>{availablePlayers.length}</span>
+                    </button>
+                  </div>
+                  {railView === "recommendations" ? (
+                    <div className="recommendations">
+                      <div className="rail-heading">
+                        <p className="eyebrow">Draft assistant</p>
+                        <h3>Best available now</h3>
+                      </div>
+                      {recommendations.slice(0, 5).map((item, index) => (
+                        <article className={index === 0 ? "is-best-pick" : ""} key={item.playerId}>
+                          {index === 0 && <span className="best-pick-label">Top recommendation</span>}
+                          <strong>{item.name}</strong>
+                          <span>
+                            Score {item.score} · {Math.round(item.confidence * 100)}% confidence
+                          </span>
+                          <small>{item.reason}</small>
+                          <div>
+                            <button
+                              type="button"
+                              className="secondary"
+                              onClick={() => void explain(item.playerId)}
+                              disabled={Boolean(explainingPlayerId)}
+                            >
+                              {explainingPlayerId === item.playerId ? "Loading…" : "Why this player?"}
+                            </button>
+                          </div>
+                        </article>
+                      ))}
+                      {!recommendations.length && <p className="rail-empty">Preparing recommendations…</p>}
+                      {explanation && <p className="explanation">{explanation}</p>}
+                    </div>
+                  ) : (
+                    <div className="available-players">
+                      <div className="rail-heading">
+                        <p className="eyebrow">Player pool</p>
+                        <h3>Available players</h3>
+                      </div>
+                      <input
+                        aria-label="Search available players"
+                        className="player-search"
+                        value={playerQuery}
+                        onChange={(event) => setPlayerQuery(event.target.value)}
+                        placeholder="Search player or team"
+                      />
+                      <div className="position-filters" aria-label="Filter by position">
+                        {["ALL", "QB", "RB", "WR", "TE"].map((position) => (
+                          <button
+                            type="button"
+                            className={playerPosition === position ? "is-active" : ""}
+                            key={position}
+                            onClick={() => setPlayerPosition(position)}
+                          >
+                            {position}
+                          </button>
+                        ))}
+                      </div>
+                      <ol className="player-list">
+                        {filteredAvailablePlayers.map((player) => (
+                          <li key={player.id}>
+                            <span className={`position-badge position-${(player.positions[0] ?? "").toLowerCase()}`}>
+                              {player.positions[0] ?? "—"}
+                            </span>
+                            <div>
+                              <strong>{player.name}</strong>
+                              <small>{player.team ?? "NFL"}</small>
+                            </div>
+                            <span className="player-adp">{player.adp ? `ADP ${player.adp.toFixed(1)}` : "—"}</span>
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  )}
+                </aside>
               </div>
             </div>
           ) : (
