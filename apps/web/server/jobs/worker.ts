@@ -65,12 +65,18 @@ async function recompute(sessionId: string, expectedVersion?: number) {
     nextOverallPick,
     totalRounds,
   });
+  const playerPositions = players.reduce<Record<string, number>>((counts, item) => {
+    const position = item.player.positions[0] ?? "UNSET";
+    counts[position] = (counts[position] ?? 0) + 1;
+    return counts;
+  }, {});
   jobTelemetry("recommendations.computed", {
     sessionId,
     sessionVersion: session.version,
     playerCount: players.length,
     recommendationCount: results.length,
-    rosterSlotCount: rosterPositions.length,
+    rosterPositions,
+    playerPositions,
   });
   const current = await prisma.draftSession.findUnique({
     where: { id: sessionId },
