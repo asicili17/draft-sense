@@ -192,11 +192,9 @@ export function DraftAssistant() {
     if (!session) return;
     // This is a recovery read and active-room heartbeat, not a direct Sleeper poll.
     // The server-side worker owns provider refreshes while this room remains active.
-    // Include the assistant reads here so a missed realtime notification cannot leave
-    // an already-computed recommendation snapshot invisible in the rail.
-    const timer = window.setInterval(() => void refresh(session.id), 10_000);
+    const timer = window.setInterval(() => void refreshSession(session.id), 10_000);
     return () => window.clearInterval(timer);
-  }, [refresh, session?.id]);
+  }, [refreshSession, session?.id]);
 
   useEffect(() => {
     if (!session) return;
