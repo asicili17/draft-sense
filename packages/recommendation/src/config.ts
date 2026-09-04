@@ -3,12 +3,16 @@
  * challenger against this version on held-out draft snapshots before it becomes
  * the default recommendation policy.
  */
-export const RECOMMENDATION_CONFIG_VERSION = "baseline-2026-08";
+export const RECOMMENDATION_CONFIG_VERSION = "redraft-depth-2026-09";
 
 export interface RecommendationWeights {
   scarcity: number;
   rosterFit: number;
   lineupGain: number;
+  coverage: number;
+  upside: number;
+  completionUrgency: number;
+  redundancy: number;
   adpValue: number;
   tierDropUrgency: number;
   waitCost: number;
@@ -20,8 +24,12 @@ export interface RecommendationWeights {
 
 export const BASELINE_RECOMMENDATION_WEIGHTS: Readonly<RecommendationWeights> = {
   scarcity: 12,
-  rosterFit: 28,
+  rosterFit: 22,
   lineupGain: 0.15,
+  coverage: 22,
+  upside: 10,
+  completionUrgency: 20,
+  redundancy: 14,
   adpValue: 8,
   tierDropUrgency: 0.2,
   waitCost: 0.35,

@@ -83,16 +83,64 @@ const starterValue = (
     complete: state.openSlots.length === 0,
   };
 };
+
+const absenceRateByPosition: Readonly<Record<string, number>> = {
+  QB: 0.06,
+  RB: 0.12,
+  WR: 0.1,
+  TE: 0.09,
+  K: 0.02,
+  DST: 0.02,
+};
+
+/**
+ * Values the normal optimal lineup plus position-level starter-unavailable
+ * scenarios. These are deliberately broad priors, not player injury forecasts.
+ */
+const rosterValue = (
+  rosterPositions: readonly string[],
+  roster: readonly DraftSimulationPlayer[],
+) => {
+  const baseline = starterValue(rosterPositions, roster);
+  const state = evaluateStarterRoster(rosterPositions, roster);
+  const byId = new Map(roster.map((player) => [player.id, player]));
+  const absenceValues = state.assignments.flatMap((assignment) => {
+    const starter = byId.get(assignment.playerId);
+    if (!starter) return [];
+    const rate = absenceRateByPosition[starter.position] ?? 0.08;
+    const withoutStarter = starterValue(rosterPositions, removePlayer(roster, starter.id)).value;
+    return [{ rate, value: withoutStarter }];
+  });
+  const expectedValue = absenceValues.reduce(
+    (value, scenario) => value - scenario.rate * (baseline.value - scenario.value),
+    baseline.value,
+  );
+  return {
+    value: expectedValue,
+    downside: Math.min(baseline.value, ...absenceValues.map((scenario) => scenario.value)),
+    complete: baseline.complete,
+  };
+};
 const pickUtility = (
   player: DraftSimulationPlayer,
   rosterPositions: readonly string[],
   roster: readonly DraftSimulationPlayer[],
   overallPick: number,
 ) => {
+  const before = rosterValue(rosterPositions, roster);
+  const after = rosterValue(rosterPositions, [...roster, player]);
   const fillsStarter = candidateFillsStarter(rosterPositions, roster, player).fillsStarter;
+  const marginalRosterValue = Math.max(0, after.value - before.value);
   const adpUrgency = player.adp === undefined ? 0 : Math.max(-15, overallPick - player.adp) * 0.35;
   const tierBonus = player.tier === undefined ? 0 : Math.max(0, 4 - player.tier) * 2;
-  return player.projectedPoints + (fillsStarter ? 35 : 0) + adpUrgency + tierBonus;
+  const completionBonus = !before.complete && after.complete ? 35 : fillsStarter ? 8 : 0;
+  return (
+    marginalRosterValue * 3 +
+    player.projectedPoints * 0.05 +
+    completionBonus +
+    adpUrgency +
+    tierBonus
+  );
 };
 function selectPlayer(input: {
   available: readonly DraftSimulationPlayer[];
@@ -137,7 +185,8 @@ export function runRosterSimulation(input: {
   return input.candidates.map((candidate, candidateIndex) => {
     let availableAtNextPick = 0;
     let completedStarters = 0;
-    const starterValues: number[] = [];
+    const rosterValues: number[] = [];
+    const downsideValues: number[] = [];
     for (let trial = 0; trial < trials; trial++) {
       const rand = random(seedNumber(`${input.seed}:${candidate.id}:${candidateIndex}:${trial}`));
       let available = [...input.playerPool];
@@ -182,19 +231,20 @@ export function runRosterSimulation(input: {
           available = removePlayer(available, selected.id);
         }
       }
-      const finalValue = starterValue(input.rosterPositions, rosters.get(input.userTeamId) ?? []);
-      starterValues.push(finalValue.value);
+      const finalValue = rosterValue(input.rosterPositions, rosters.get(input.userTeamId) ?? []);
+      rosterValues.push(finalValue.value);
+      downsideValues.push(finalValue.downside);
       if (finalValue.complete) completedStarters += 1;
     }
-    const sortedValues = [...starterValues].sort((left, right) => left - right);
-    const downsideIndex = Math.max(0, Math.floor((sortedValues.length - 1) * 0.2));
+    const sortedDownsideValues = [...downsideValues].sort((left, right) => left - right);
+    const downsideIndex = Math.max(0, Math.floor((sortedDownsideValues.length - 1) * 0.2));
     return {
       playerId: candidate.id,
       availableAtNextPickProbability: Number((availableAtNextPick / trials).toFixed(3)),
       expectedStarterValue: Number(
-        (starterValues.reduce((sum, value) => sum + value, 0) / trials).toFixed(2),
+        (rosterValues.reduce((sum, value) => sum + value, 0) / trials).toFixed(2),
       ),
-      downsideStarterValue: Number((sortedValues[downsideIndex] ?? 0).toFixed(2)),
+      downsideStarterValue: Number((sortedDownsideValues[downsideIndex] ?? 0).toFixed(2)),
       starterCompletionProbability: Number((completedStarters / trials).toFixed(3)),
     };
   });

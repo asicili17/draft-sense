@@ -2,7 +2,9 @@
 
 ## Monte Carlo draft simulation
 
-For each candidate recommendation, simulate the remaining draft thousands of times from the current immutable session version. In each trial, lock the candidate as the user's next pick when evaluating that decision, model every subsequent opponent selection, and record which players and tiers remain at the user's later picks. Aggregate availability probability, expected roster value, and downside percentiles.
+For each candidate recommendation, simulate the remaining draft from the current immutable session version. In each trial, lock the candidate as the user's next pick when evaluating that decision, model every subsequent opponent selection, and record which players and tiers remain at the user's later picks. Aggregate availability probability, expected roster value, and downside percentiles.
+
+Expected roster value includes position-level starter-unavailable scenarios. Each scenario removes one assigned starter, re-optimizes the legal lineup from the remaining roster, and measures how much value the bench preserves. These broad absence priors support coverage decisions without making player-specific injury predictions.
 
 Seed each run deterministically from session version, dataset version, configuration, and trial index. This makes results reproducible and permits cache reuse. Store inputs and aggregate outputs, not every simulated pick by default.
 
@@ -16,7 +18,7 @@ Represent ADP as a distribution rather than a rank. Prefer provider historical p
 
 ## Team needs
 
-Model roster slots, starters, bench, flex eligibility, maximums, and configurable strategic targets. Need declines once a position is filled but never overrides hard roster eligibility. Opponent needs alter pick utility; the user's needs inform both recommendation scoring and the value of waiting.
+Model roster slots, starters, bench, flex eligibility, maximums, and configurable strategic targets. Need declines once a position is filled, while the first viable backup retains contingency value and repeated depth receives diminishing value. Opponent needs alter pick utility; the user's needs inform both recommendation scoring and the value of waiting.
 
 ## Performance
 

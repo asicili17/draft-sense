@@ -5,14 +5,11 @@ import {
   starterDemandByPosition,
   type NflStarterPosition,
 } from "@draft-sense/roster-construction";
-import {
-  BASELINE_RECOMMENDATION_WEIGHTS,
-  RECOMMENDATION_CONFIG_VERSION,
-} from "./config";
+import { BASELINE_RECOMMENDATION_WEIGHTS, RECOMMENDATION_CONFIG_VERSION } from "./config";
 
 // Bump whenever the candidate pool or scoring semantics change so existing
 // immutable snapshots are never returned as though they used new logic.
-export const ALGORITHM_VERSION = `3.1.0:${RECOMMENDATION_CONFIG_VERSION}`;
+export const ALGORITHM_VERSION = `3.2.0:${RECOMMENDATION_CONFIG_VERSION}`;
 export { BASELINE_RECOMMENDATION_WEIGHTS, RECOMMENDATION_CONFIG_VERSION } from "./config";
 export { evaluateRecommendationCases } from "./evaluation";
 
@@ -58,6 +55,10 @@ export interface Recommendation {
     scarcity: number;
     rosterFit: number;
     lineupGain: number;
+    coverage: number;
+    upside: number;
+    completionUrgency: number;
+    redundancy: number;
     adpValue: number;
     availability: number;
     tierDrop: number;
@@ -72,6 +73,10 @@ export interface Recommendation {
     scarcity: number;
     rosterFit: number;
     lineupGain: number;
+    coverage: number;
+    upside: number;
+    completionUrgency: number;
+    redundancy: number;
     adpValue: number;
     availability: number;
     tierDrop: number;
@@ -88,6 +93,10 @@ function weightedScore(input: {
   scarcity: number;
   rosterFit: number;
   lineupGain: number;
+  coverage: number;
+  upside: number;
+  completionUrgency: number;
+  redundancy: number;
   adpValue: number;
   tierDrop: number;
   urgency: number;
@@ -103,6 +112,10 @@ function weightedScore(input: {
     input.scarcity * weights.scarcity +
     input.rosterFit * weights.rosterFit +
     input.lineupGain * weights.lineupGain +
+    input.coverage * weights.coverage +
+    input.upside * weights.upside +
+    input.completionUrgency * weights.completionUrgency -
+    input.redundancy * weights.redundancy +
     input.adpValue * weights.adpValue +
     input.tierDrop * input.urgency * weights.tierDropUrgency +
     input.waitCost * weights.waitCost -
@@ -131,6 +144,9 @@ function reasonFor(input: {
   player: RecommendationPlayer;
   openSlots: readonly { label: string; eligiblePositions: readonly string[] }[];
   unsupportedSlots: readonly string[];
+  coverage: number;
+  upside: number;
+  mustFillStarter: boolean;
 }) {
   if (input.fillsStarter) {
     const matchingSlot = input.openSlots.find((slot) =>
@@ -140,10 +156,17 @@ function reasonFor(input: {
       ? `Fills your open ${formatSlot(matchingSlot.label)} starter slot.`
       : "Improves your ability to complete a legal starting lineup.";
   }
+  if (input.coverage >= 0.7)
+    return `Adds your strongest ${input.player.position} injury and bye-week cover.`;
+  if (input.upside >= 0.65)
+    return "Adds a high-upside bench option who can grow into a weekly starter.";
   if (input.unsupportedSlots.length)
     return `Adds depth; unsupported roster slot: ${input.unsupportedSlots[0]}.`;
-  return "Adds depth after current starter needs are accounted for.";
+  if (input.mustFillStarter) return "Completes a required starting slot before the draft ends.";
+  return "Adds usable bench depth after current starter needs are accounted for.";
 }
+
+const clamp = (value: number) => Math.min(1, Math.max(0, value));
 
 const survivalProbability = (player: RecommendationPlayer, nextOverallPick: number) => {
   if (player.adp === undefined) return undefined;
@@ -179,9 +202,19 @@ export function recommend(input: RecommendationInput): readonly Recommendation[]
     input.currentOverallPick ?? input.draftedPlayerIds.length + 1,
   );
   const nextOverallPick = Math.max(currentOverallPick, input.nextOverallPick ?? currentOverallPick);
-  const draftProgress = currentOverallPick / Math.max(1, teamCount * totalRounds);
+  const userPicksRemaining = Math.max(0, totalRounds - input.roster.length);
+  const openStarterCount = currentRoster.openSlots.length;
+  const mustFillStarter = openStarterCount > 0 && userPicksRemaining <= openStarterCount;
+  const completionPressure =
+    openStarterCount === 0
+      ? 0
+      : mustFillStarter
+        ? 1
+        : clamp(openStarterCount / Math.max(1, userPicksRemaining));
   const demand = starterDemandByPosition(input.rosterPositions, teamCount);
-  const simulationByPlayer = new Map(input.simulation?.map((outcome) => [outcome.playerId, outcome]));
+  const simulationByPlayer = new Map(
+    input.simulation?.map((outcome) => [outcome.playerId, outcome]),
+  );
   const simulatedValues = [...simulationByPlayer.values()];
   const simulationValueRange = {
     min: Math.min(...simulatedValues.map((outcome) => outcome.expectedStarterValue), 0),
@@ -202,14 +235,28 @@ export function recommend(input: RecommendationInput): readonly Recommendation[]
         .sort((left, right) => right.projectedPoints - left.projectedPoints),
     );
   const baselines = new Map<NflStarterPosition, number>();
+  const topByPosition = new Map<NflStarterPosition, number>();
   for (const position of NFL_STARTER_POSITIONS) {
     const values = availableByPosition.get(position) ?? [];
     const replacementIndex = Math.max(0, Math.ceil(demand[position]) - 1);
     baselines.set(position, values[replacementIndex]?.projectedPoints ?? 0);
+    topByPosition.set(position, values[0]?.projectedPoints ?? 0);
   }
 
-  const hasNonSpecialStarterNeed = currentRoster.openSlots.some((slot) =>
-    slot.eligiblePositions.some((position) => !specialPositions.has(position)),
+  const rosterPositionById = new Map(
+    roster.map((player) => [player.id, player.positions[0] as NflStarterPosition | undefined]),
+  );
+  const rosterCounts = input.roster.reduce<Record<string, number>>((counts, position) => {
+    counts[position] = (counts[position] ?? 0) + 1;
+    return counts;
+  }, {});
+  const assignedCounts = currentRoster.assignments.reduce<Record<string, number>>(
+    (counts, assignment) => {
+      const position = rosterPositionById.get(assignment.playerId);
+      if (position) counts[position] = (counts[position] ?? 0) + 1;
+      return counts;
+    },
+    {},
   );
   const ranked = available
     .flatMap((player) => {
@@ -219,17 +266,37 @@ export function recommend(input: RecommendationInput): readonly Recommendation[]
       });
       const fillsStarter = candidate.fillsStarter;
       const isSpecial = specialPositions.has(player.position);
-      // Kickers and defenses wait until the manager can fill every skill-position
-      // starter and the draft has entered its final quarter.
-      if (isSpecial && (hasNonSpecialStarterNeed || draftProgress < 0.75)) return [];
-      // Do not spend an early pick on bench depth while any legal starter remains
-      // empty. SUPER_FLEX QB2 is permitted because it fills a starter slot.
-      if (!fillsStarter && currentRoster.openSlots.length > 0) return [];
+      // Starter completion becomes mandatory only when every remaining selection
+      // is needed to produce a legal roster. Before then, depth competes normally.
+      if (mustFillStarter && !fillsStarter) return [];
 
       const vorp = player.projectedPoints - (baselines.get(player.position) ?? 0);
       const positionAvailable = availableByPosition.get(player.position)?.length ?? 0;
       const scarcity = Math.min(1, demand[player.position] / Math.max(positionAvailable, 1));
-      const rosterFit = fillsStarter ? 1 : 0.15;
+      const rosteredAtPosition = rosterCounts[player.position] ?? 0;
+      const assignedAtPosition = assignedCounts[player.position] ?? 0;
+      const benchDepth = Math.max(0, rosteredAtPosition - assignedAtPosition);
+      const quality = clamp(
+        player.projectedPoints / Math.max(1, topByPosition.get(player.position) ?? 1),
+      );
+      // A first credible backup carries the most contingency value. Each extra
+      // player at the same position provides less protection in a managed league.
+      const coverage =
+        fillsStarter || isSpecial || assignedAtPosition === 0
+          ? 0
+          : quality * (benchDepth === 0 ? 1 : benchDepth === 1 ? 0.45 : 0.15);
+      const tierUpside = player.tier === undefined ? 0.35 : clamp((5 - player.tier) / 4);
+      const uncertaintyUpside =
+        player.rankStdDev === undefined ? 0.25 : clamp(player.rankStdDev / 24);
+      const upside = isSpecial ? 0 : quality * (tierUpside * 0.7 + uncertaintyUpside * 0.3);
+      const redundancy =
+        fillsStarter || coverage >= 0.7
+          ? 0
+          : isSpecial && assignedAtPosition > 0
+            ? 1
+            : clamp(benchDepth / 3);
+      const completionUrgency = fillsStarter ? completionPressure : -completionPressure;
+      const rosterFit = fillsStarter ? 1 : clamp(0.15 + coverage * 0.65 + upside * 0.2);
       const lineupGain = fillsStarter ? Math.max(0, vorp) : 0;
       const availability = survivalProbability(player, nextOverallPick);
       const urgency = availability === undefined ? 0 : 1 - availability;
@@ -253,15 +320,18 @@ export function recommend(input: RecommendationInput): readonly Recommendation[]
         player,
         openSlots: currentRoster.openSlots,
         unsupportedSlots: currentRoster.unsupportedSlots,
+        coverage,
+        upside,
+        mustFillStarter,
       });
       const reason =
         simulation && simulationValue >= 0.9
           ? `Simulation projects the strongest completed starting lineup. ${rosterReason}`
           : availability !== undefined && urgency >= 0.65
-          ? `Take now: only ${Math.round(availability * 100)}% likely to reach pick ${nextOverallPick}. ${rosterReason}`
-          : adpValue >= 0.5
-            ? `Falling past ADP. ${rosterReason}`
-            : rosterReason;
+            ? `Take now: only ${Math.round(availability * 100)}% likely to reach pick ${nextOverallPick}. ${rosterReason}`
+            : adpValue >= 0.5
+              ? `Falling past ADP. ${rosterReason}`
+              : rosterReason;
       return [
         {
           player,
@@ -270,6 +340,10 @@ export function recommend(input: RecommendationInput): readonly Recommendation[]
             scarcity,
             rosterFit,
             lineupGain,
+            coverage,
+            upside,
+            completionUrgency,
+            redundancy,
             adpValue,
             availability: availability ?? 0.5,
             tierDrop,
@@ -285,6 +359,10 @@ export function recommend(input: RecommendationInput): readonly Recommendation[]
             scarcity,
             rosterFit,
             lineupGain,
+            coverage,
+            upside,
+            completionUrgency,
+            redundancy,
             adpValue,
             tierDrop,
             urgency,
@@ -319,6 +397,10 @@ export function recommend(input: RecommendationInput): readonly Recommendation[]
       scarcity: Number(item.factors.scarcity.toFixed(3)),
       rosterFit: Number(item.factors.rosterFit.toFixed(3)),
       lineupGain: Number((item.factors.lineupGain / maxLineupGain).toFixed(3)),
+      coverage: Number(item.factors.coverage.toFixed(3)),
+      upside: Number(item.factors.upside.toFixed(3)),
+      completionUrgency: Number(item.factors.completionUrgency.toFixed(3)),
+      redundancy: Number(item.factors.redundancy.toFixed(3)),
       adpValue: Number(item.factors.adpValue.toFixed(3)),
       availability: Number(item.factors.availability.toFixed(3)),
       tierDrop: Number((item.factors.tierDrop / maxTierDrop).toFixed(3)),

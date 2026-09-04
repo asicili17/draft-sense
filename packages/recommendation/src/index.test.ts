@@ -17,7 +17,7 @@ describe("recommend", () => {
     expect(results.map((item) => item.playerId)).toEqual(["free"]);
   });
 
-  it("prefers a needed WR over QB2 when the roster has no WR", () => {
+  it("keeps bench depth eligible while identifying open starter fits", () => {
     const results = recommend({
       players: [
         { id: "qb-2", name: "QB Two", position: "QB", projectedPoints: 320 },
@@ -31,11 +31,17 @@ describe("recommend", () => {
       currentOverallPick: 25,
       totalRounds: 15,
     });
-    expect(results.map((item) => item.playerId)).not.toContain("qb-2");
+    expect(results.map((item) => item.playerId)).toContain("qb-2");
     expect(results.some((item) => item.playerId === "wr-1")).toBe(true);
+    expect(
+      results.find((item) => item.playerId === "wr-1")?.factors.completionUrgency,
+    ).toBeGreaterThan(0);
+    expect(
+      results.find((item) => item.playerId === "qb-2")?.factors.completionUrgency,
+    ).toBeLessThan(0);
   });
 
-  it("does not recommend K or DST during the early skill-position build", () => {
+  it("keeps K and DST eligible but ranks a needed skill player first", () => {
     const results = recommend({
       players: [
         { id: "k", name: "Kicker", position: "K", projectedPoints: 170 },
@@ -49,7 +55,8 @@ describe("recommend", () => {
       currentOverallPick: 24,
       totalRounds: 15,
     });
-    expect(results.map((item) => item.playerId)).toEqual(["wr"]);
+    expect(results[0]?.playerId).toBe("wr");
+    expect(results.map((item) => item.playerId)).toEqual(expect.arrayContaining(["k", "dst"]));
   });
 
   it("allows QB2 to fill a superflex starter", () => {
@@ -127,11 +134,101 @@ describe("recommend", () => {
       rosterPositions: ["RB", "WR"],
       roster: [],
       simulation: [
-        { playerId: "wr", expectedStarterValue: 400, downsideStarterValue: 380, starterCompletionProbability: 1 },
-        { playerId: "rb", expectedStarterValue: 360, downsideStarterValue: 330, starterCompletionProbability: 0.8 },
+        {
+          playerId: "wr",
+          expectedStarterValue: 400,
+          downsideStarterValue: 380,
+          starterCompletionProbability: 1,
+        },
+        {
+          playerId: "rb",
+          expectedStarterValue: 360,
+          downsideStarterValue: 330,
+          starterCompletionProbability: 0.8,
+        },
       ],
     });
     expect(results[0]?.playerId).toBe("wr");
     expect(results[0]?.reason).toContain("Simulation projects");
+  });
+
+  it("recommends season-long bench value when only K and DST starters remain", () => {
+    const results = recommend({
+      players: [
+        {
+          id: "wr-upside",
+          name: "Upside WR",
+          position: "WR",
+          projectedPoints: 225,
+          tier: 2,
+          rankStdDev: 18,
+        },
+        { id: "rb-cover", name: "RB Cover", position: "RB", projectedPoints: 205, tier: 3 },
+        { id: "k", name: "Kicker", position: "K", projectedPoints: 160 },
+        { id: "dst", name: "Defense", position: "DST", projectedPoints: 145 },
+      ],
+      draftedPlayerIds: [],
+      rosterPositions: [
+        "QB",
+        "RB",
+        "RB",
+        "WR",
+        "WR",
+        "TE",
+        "FLEX",
+        "FLEX",
+        "K",
+        "DEF",
+        "BN",
+        "BN",
+        "BN",
+        "BN",
+        "BN",
+      ],
+      roster: ["QB", "RB", "RB", "WR", "WR", "TE", "RB", "WR"],
+      teamCount: 10,
+      currentOverallPick: 104,
+      nextOverallPick: 117,
+      totalRounds: 15,
+    });
+
+    expect(results).not.toHaveLength(0);
+    expect(results[0]?.playerId).toBe("wr-upside");
+    expect(results[0]?.reason).toMatch(/cover|upside|depth/i);
+  });
+
+  it("requires open starters when remaining picks equal remaining required slots", () => {
+    const results = recommend({
+      players: [
+        { id: "wr", name: "Bench WR", position: "WR", projectedPoints: 240 },
+        { id: "k", name: "Kicker", position: "K", projectedPoints: 160 },
+        { id: "dst", name: "Defense", position: "DST", projectedPoints: 145 },
+      ],
+      draftedPlayerIds: [],
+      rosterPositions: ["QB", "RB", "WR", "TE", "K", "DST", "BN", "BN"],
+      roster: ["QB", "RB", "WR", "TE", "WR", "RB"],
+      totalRounds: 8,
+    });
+
+    expect(results.map((item) => item.playerId)).toEqual(expect.arrayContaining(["k", "dst"]));
+    expect(results.map((item) => item.playerId)).not.toContain("wr");
+  });
+
+  it("values first-position cover more than redundant depth", () => {
+    const results = recommend({
+      players: [
+        { id: "rb-cover", name: "RB Cover", position: "RB", projectedPoints: 190, tier: 3 },
+        { id: "wr-depth", name: "WR Depth", position: "WR", projectedPoints: 190, tier: 3 },
+      ],
+      draftedPlayerIds: [],
+      rosterPositions: ["RB", "WR", "FLEX", "BN", "BN", "BN"],
+      roster: ["RB", "WR", "WR", "WR"],
+      totalRounds: 6,
+    });
+
+    expect(results[0]?.playerId).toBe("rb-cover");
+    expect(results[0]?.factors.coverage).toBeGreaterThan(
+      results.find((item) => item.playerId === "wr-depth")?.factors.coverage ?? 0,
+    );
   });
 });
