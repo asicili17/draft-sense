@@ -62,7 +62,7 @@ export function DraftAssistant() {
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
   const [savedRooms, setSavedRooms] = useState<SavedDraftRoom[]>([]);
   const [availablePlayers, setAvailablePlayers] = useState<AvailablePlayer[]>([]);
-  const [railView, setRailView] = useState<"recommendations" | "players">("recommendations");
+  const [isDraftRailOpen, setIsDraftRailOpen] = useState(true);
   const [playerQuery, setPlayerQuery] = useState("");
   const [playerPosition, setPlayerPosition] = useState("ALL");
   const sessionVersionRef = useRef(0);
@@ -515,7 +515,7 @@ export function DraftAssistant() {
                   </button>
                 </div>
               </div>
-              <div className="draft-workspace">
+              <div className={`draft-workspace ${isDraftRailOpen ? "is-rail-open" : ""}`}>
                 <section className="draft-board" aria-label="Draft board">
                   <div className="board-heading">
                     <div>
@@ -577,61 +577,29 @@ export function DraftAssistant() {
                     </div>
                   </div>
                 </section>
-                <aside className="draft-rail" aria-label="Draft assistant">
-                  <div className="rail-tabs" role="tablist" aria-label="Draft assistant views">
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={railView === "recommendations"}
-                      className={railView === "recommendations" ? "is-active" : ""}
-                      onClick={() => setRailView("recommendations")}
-                    >
-                      Recommendations
-                    </button>
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={railView === "players"}
-                      className={railView === "players" ? "is-active" : ""}
-                      onClick={() => setRailView("players")}
-                    >
-                      All players <span>{availablePlayers.length}</span>
-                    </button>
-                  </div>
-                  {railView === "recommendations" ? (
-                    <div className="recommendations">
-                      <div className="rail-heading">
+                {isDraftRailOpen ? (
+                  <aside className="draft-rail" aria-label="Draft assistant">
+                    <div className="rail-header">
+                      <div>
                         <p className="eyebrow">Draft assistant</p>
-                        <h3>Best available now</h3>
+                        <h3>Draft tools</h3>
                       </div>
-                      {recommendations.slice(0, 5).map((item, index) => (
-                        <article className={index === 0 ? "is-best-pick" : ""} key={item.playerId}>
-                          {index === 0 && <span className="best-pick-label">Top recommendation</span>}
-                          <strong>{item.name}</strong>
-                          <span>
-                            Score {item.score} · {Math.round(item.confidence * 100)}% confidence
-                          </span>
-                          <small>{item.reason}</small>
-                          <div>
-                            <button
-                              type="button"
-                              className="secondary"
-                              onClick={() => void explain(item.playerId)}
-                              disabled={Boolean(explainingPlayerId)}
-                            >
-                              {explainingPlayerId === item.playerId ? "Loading…" : "Why this player?"}
-                            </button>
-                          </div>
-                        </article>
-                      ))}
-                      {!recommendations.length && <p className="rail-empty">Preparing recommendations…</p>}
-                      {explanation && <p className="explanation">{explanation}</p>}
+                      <button
+                        type="button"
+                        className="rail-close"
+                        aria-label="Close draft assistant"
+                        onClick={() => setIsDraftRailOpen(false)}
+                      >
+                        ×
+                      </button>
                     </div>
-                  ) : (
-                    <div className="available-players">
+                    <section className="available-players rail-pane" aria-label="Available players">
                       <div className="rail-heading">
-                        <p className="eyebrow">Player pool</p>
-                        <h3>Available players</h3>
+                        <div>
+                          <p className="eyebrow">Player pool</p>
+                          <h3>Available players</h3>
+                        </div>
+                        <span className="rail-count">{availablePlayers.length}</span>
                       </div>
                       <input
                         aria-label="Search available players"
@@ -666,9 +634,48 @@ export function DraftAssistant() {
                           </li>
                         ))}
                       </ol>
-                    </div>
-                  )}
-                </aside>
+                    </section>
+                    <section className="recommendations rail-pane" aria-label="Recommendations">
+                      <div className="rail-heading">
+                        <div>
+                          <p className="eyebrow">Recommendations</p>
+                          <h3>Best available now</h3>
+                        </div>
+                      </div>
+                      {recommendations.slice(0, 5).map((item, index) => (
+                        <article className={index === 0 ? "is-best-pick" : ""} key={item.playerId}>
+                          {index === 0 && <span className="best-pick-label">Top recommendation</span>}
+                          <strong>{item.name}</strong>
+                          <span>
+                            Score {item.score} · {Math.round(item.confidence * 100)}% confidence
+                          </span>
+                          <small>{item.reason}</small>
+                          <div>
+                            <button
+                              type="button"
+                              className="secondary"
+                              onClick={() => void explain(item.playerId)}
+                              disabled={Boolean(explainingPlayerId)}
+                            >
+                              {explainingPlayerId === item.playerId ? "Loading…" : "Why this player?"}
+                            </button>
+                          </div>
+                        </article>
+                      ))}
+                      {!recommendations.length && <p className="rail-empty">Preparing recommendations…</p>}
+                      {explanation && <p className="explanation">{explanation}</p>}
+                    </section>
+                  </aside>
+                ) : (
+                  <button
+                    type="button"
+                    className="draft-rail-open"
+                    aria-label="Open draft assistant"
+                    onClick={() => setIsDraftRailOpen(true)}
+                  >
+                    Open assistant
+                  </button>
+                )}
               </div>
             </div>
           ) : (

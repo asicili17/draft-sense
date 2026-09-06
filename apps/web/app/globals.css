@@ -309,6 +309,9 @@ select:focus {
   gap: 18px;
   align-items: start;
 }
+.draft-workspace.is-rail-open {
+  grid-template-columns: minmax(0, 1fr) 380px;
+}
 .draft-board,
 .draft-rail {
   border: 1px solid #2b322d;
@@ -472,28 +475,30 @@ select:focus {
   font-variant-numeric: tabular-nums;
 }
 .draft-rail {
-  position: fixed;
-  right: clamp(18px, 3vw, 36px);
-  bottom: 18px;
-  z-index: 10;
-  width: min(720px, calc(100vw - 440px));
-  max-height: min(62vh, 620px);
-  min-height: 0;
-  overflow-y: auto;
-  box-shadow: 0 18px 48px rgb(0 0 0 / 45%);
-}
-.rail-tabs {
+  position: sticky;
+  top: 18px;
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px;
-  padding: 8px;
+  grid-template-rows: auto minmax(0, 1.1fr) minmax(0, 0.9fr);
+  height: calc(100vh - 118px);
+  min-height: 0;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 28%);
+}
+.rail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px;
   border-bottom: 1px solid #252d27;
   background: #0e120f;
-  position: sticky;
-  top: 0;
-  z-index: 1;
 }
-.rail-tabs button,
+.rail-header h3 {
+  margin: 0;
+  color: #f5f7f5;
+  font-size: 16px;
+  letter-spacing: -0.02em;
+}
+.rail-close,
+.draft-rail-open,
 .position-filters button {
   border: 0;
   border-radius: 6px;
@@ -502,15 +507,27 @@ select:focus {
   font-size: 11px;
   font-weight: 750;
 }
-.rail-tabs button {
-  padding: 8px 5px;
+.rail-close {
+  width: 30px;
+  height: 30px;
+  color: #c7d0c8;
+  font-size: 22px;
+  line-height: 1;
 }
-.rail-tabs button span {
-  color: #6fdc98;
+.rail-close:hover {
+  background: #202722;
+  color: #f5f7f5;
 }
-.rail-tabs button.is-active {
+.draft-rail-open {
+  position: fixed;
+  top: 50%;
+  right: 0;
+  z-index: 10;
+  padding: 10px 8px;
+  border-radius: 7px 0 0 7px;
   background: #1d2d22;
   color: #e1f8e7;
+  box-shadow: 0 8px 22px rgb(0 0 0 / 30%);
 }
 .recommendations,
 .available-players {
@@ -518,6 +535,22 @@ select:focus {
   align-content: start;
   gap: 10px;
   padding: 18px;
+}
+.rail-pane {
+  min-height: 0;
+}
+.available-players.rail-pane {
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  overflow: hidden;
+}
+.recommendations.rail-pane {
+  overflow-y: auto;
+  border-top: 1px solid #252d27;
+}
+.rail-count {
+  color: #75d99a;
+  font-size: 12px;
+  font-weight: 750;
 }
 .recommendations article {
   display: grid;
@@ -596,6 +629,10 @@ select:focus {
   padding: 0;
   overflow: auto;
   list-style: none;
+}
+.available-players .player-list {
+  min-height: 0;
+  max-height: none;
 }
 .player-list li {
   display: grid;
@@ -718,12 +755,17 @@ select:focus {
   .draft-workspace {
     grid-template-columns: 1fr;
   }
+  .draft-workspace.is-rail-open {
+    grid-template-columns: 1fr;
+  }
   .draft-rail {
+    position: fixed;
+    top: 76px;
     right: 18px;
     bottom: 18px;
     left: 18px;
     width: auto;
-    max-height: min(55vh, 560px);
+    height: auto;
   }
   .topbar-actions {
     font-size: 0;
