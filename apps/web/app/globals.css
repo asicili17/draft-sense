@@ -7,9 +7,13 @@
 * {
   box-sizing: border-box;
 }
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
 body {
   margin: 0;
-  min-height: 100vh;
   background: #0a0c0b;
 }
 button,
@@ -25,7 +29,10 @@ button:disabled {
   opacity: 0.45;
 }
 .workspace {
-  min-height: 100vh;
+  display: grid;
+  height: 100vh;
+  grid-template-rows: 64px minmax(0, 1fr);
+  overflow: hidden;
 }
 .topbar {
   height: 64px;
@@ -58,14 +65,17 @@ button:disabled {
   box-shadow: 0 0 0 3px #173b26;
 }
 .workspace-grid {
-  min-height: calc(100vh - 64px);
+  min-height: 0;
   display: grid;
   grid-template-columns: minmax(320px, 390px) 1fr;
+  overflow: hidden;
 }
 .league-panel {
+  min-height: 0;
   padding: 34px 22px;
   border-right: 1px solid #282c29;
   background: #0d100e;
+  overflow-y: auto;
 }
 .panel-heading {
   display: flex;
@@ -244,12 +254,15 @@ select:focus {
   color: #89938b;
 }
 .content-panel {
-  display: grid;
-  place-items: center;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
   padding: 36px;
   background: radial-gradient(circle at 70% 20%, #14251a 0, #0a0c0b 38%);
+  overflow: hidden;
 }
 .room-empty {
+  margin: auto;
   max-width: 380px;
   text-align: center;
   color: #a7b0a9;
@@ -273,7 +286,11 @@ select:focus {
   line-height: 1.65;
 }
 .draft-room {
-  width: min(100%, 1540px);
+  display: flex;
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  flex-direction: column;
 }
 .room-header {
   display: flex;
@@ -305,9 +322,11 @@ select:focus {
 }
 .draft-workspace {
   display: grid;
+  flex: 1;
+  min-height: 0;
   grid-template-columns: minmax(0, 1fr);
   gap: 18px;
-  align-items: start;
+  align-items: stretch;
 }
 .draft-workspace.is-rail-open {
   grid-template-columns: minmax(0, 1fr) 380px;
@@ -318,6 +337,11 @@ select:focus {
   border-radius: 10px;
   background: #111511;
   overflow: hidden;
+}
+.draft-board {
+  display: grid;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
 }
 .board-heading,
 .rail-heading {
@@ -342,9 +366,9 @@ select:focus {
   font-size: 11px;
 }
 .board-scroll {
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  max-height: calc(100vh - 220px);
 }
 .draft-grid {
   display: grid;
@@ -475,11 +499,10 @@ select:focus {
   font-variant-numeric: tabular-nums;
 }
 .draft-rail {
-  position: sticky;
-  top: 18px;
+  position: relative;
   display: grid;
   grid-template-rows: auto minmax(0, 1.1fr) minmax(0, 0.9fr);
-  height: calc(100vh - 118px);
+  height: 100%;
   min-height: 0;
   box-shadow: 0 12px 32px rgb(0 0 0 / 28%);
 }
@@ -743,13 +766,14 @@ select:focus {
   }
   .workspace-grid {
     grid-template-columns: 1fr;
+    grid-template-rows: minmax(220px, 40%) minmax(0, 1fr);
   }
   .league-panel {
     border-right: 0;
     border-bottom: 1px solid #282c29;
   }
   .content-panel {
-    min-height: 55vh;
+    min-height: 0;
     padding: 28px 18px;
   }
   .draft-workspace {
