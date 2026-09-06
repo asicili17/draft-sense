@@ -472,7 +472,15 @@ select:focus {
   font-variant-numeric: tabular-nums;
 }
 .draft-rail {
+  position: fixed;
+  right: clamp(18px, 3vw, 36px);
+  bottom: 18px;
+  z-index: 10;
+  width: min(720px, calc(100vw - 440px));
+  max-height: min(62vh, 620px);
   min-height: 0;
+  overflow-y: auto;
+  box-shadow: 0 18px 48px rgb(0 0 0 / 45%);
 }
 .rail-tabs {
   display: grid;
@@ -481,6 +489,9 @@ select:focus {
   padding: 8px;
   border-bottom: 1px solid #252d27;
   background: #0e120f;
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }
 .rail-tabs button,
 .position-filters button {
@@ -708,7 +719,11 @@ select:focus {
     grid-template-columns: 1fr;
   }
   .draft-rail {
-    min-height: 0;
+    right: 18px;
+    bottom: 18px;
+    left: 18px;
+    width: auto;
+    max-height: min(55vh, 560px);
   }
   .topbar-actions {
     font-size: 0;
