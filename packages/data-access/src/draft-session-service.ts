@@ -377,7 +377,15 @@ export async function draftablePlayers(sessionId: string) {
         projectedPoints: scoreNflProjection(metadata?.stats ?? {}, scoringRules),
       };
     })
-    .sort((left, right) => right.projectedPoints - left.projectedPoints)
+    // The market profile is sourced from FantasyPros when it is available for
+    // the session's scoring format. Show its ADP as the primary draft-board
+    // ordering; undrafted players without ADP remain discoverable at the end.
+    .sort(
+      (left, right) =>
+        (left.adp ?? Number.POSITIVE_INFINITY) - (right.adp ?? Number.POSITIVE_INFINITY) ||
+        right.projectedPoints - left.projectedPoints ||
+        left.player.fullName.localeCompare(right.player.fullName),
+    )
     .slice(0, 500);
 }
 export { positionSet };

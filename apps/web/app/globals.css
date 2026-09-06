@@ -305,7 +305,7 @@ select:focus {
 }
 .draft-workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
+  grid-template-columns: minmax(0, 1fr);
   gap: 18px;
   align-items: start;
 }
@@ -339,13 +339,15 @@ select:focus {
   font-size: 11px;
 }
 .board-scroll {
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   max-height: calc(100vh - 220px);
 }
 .draft-grid {
   display: grid;
-  grid-template-columns: 48px repeat(var(--team-count), minmax(128px, 1fr));
-  min-width: max-content;
+  grid-template-columns: 42px repeat(var(--team-count), minmax(0, 1fr));
+  width: 100%;
+  min-width: 0;
   gap: 4px;
   padding: 8px;
   background: #0b0e0c;
@@ -470,7 +472,7 @@ select:focus {
   font-variant-numeric: tabular-nums;
 }
 .draft-rail {
-  min-height: 640px;
+  min-height: 0;
 }
 .rail-tabs {
   display: grid;
